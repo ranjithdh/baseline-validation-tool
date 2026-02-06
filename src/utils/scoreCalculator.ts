@@ -30,51 +30,97 @@ export function getBMIRank(value: number | string | undefined): number | null {
 }
 
 /**
+ * Audit log for a single biomarker calculation.
+ */
+export interface BiomarkerAudit {
+    name: string;
+    tier?: string; // Added to track which tier the marker belongs to
+    apiNameUsed: string | null;
+    originalRank: number | null;
+    cappedRank: number | null;
+    maxRank: number;
+    targetScore: number;
+    finalScore: number;
+    ruleApplied: string | null;
+    ruleTitle?: string;
+    isMissing: boolean;
+    isSubstitute: boolean;
+    substituteValue?: string | number;
+}
+
+/**
  * Calculates the rating rank for a tiered biomarker.
  * Handles primary names, related names, substitutes, and combined (lowest) logic.
  * Returns null if the biomarker is missing from the API.
  */
-export function calculateTierRank(tierItem: TieredBiomarker, bloodData: BloodBiomarker[]): number | null {
+export function calculateTierRank(tierItem: TieredBiomarker, bloodData: BloodBiomarker[]): { rank: number | null, audit: Partial<BiomarkerAudit> } {
+    let audit: Partial<BiomarkerAudit> = {
+        name: tierItem.name,
+        isMissing: true,
+        isSubstitute: false
+    };
+
     // 1. FIRST check whether the primary marker name exists and has a value
     const primaryBiomarker = bloodData.find(bm => bm.display_name === tierItem.name);
     if (primaryBiomarker && primaryBiomarker.value !== null && primaryBiomarker.value !== undefined) {
-        return getRatingRank(primaryBiomarker);
+        audit.apiNameUsed = primaryBiomarker.display_name;
+        audit.isMissing = false;
+        return { rank: getRatingRank(primaryBiomarker), audit };
     }
 
     // 2. If the name is NOT available, check the relatedNames
     if (!tierItem.relatedNames || tierItem.relatedNames.length === 0) {
-        return null;
+        return { rank: null, audit };
     }
 
     if (tierItem.rule === 'substitute') {
+        audit.ruleApplied = 'substitute';
         // Return rank from first available related name
         for (const name of tierItem.relatedNames) {
             // Special Case: BMI fallback logic
             if (name === "Body Mass Index (BMI)") {
-                return getBMIRank(21.36); // Hardcoded value as per user request
+                audit.apiNameUsed = name;
+                audit.isMissing = false;
+                audit.isSubstitute = true;
+                audit.substituteValue = 21.36;
+                return { rank: getBMIRank(21.36), audit }; // Hardcoded value as per user request
             }
 
             const biomarker = bloodData.find(bm => bm.display_name === name);
             if (biomarker && biomarker.value !== null && biomarker.value !== undefined) {
-                return getRatingRank(biomarker);
+                audit.apiNameUsed = biomarker.display_name;
+                audit.isMissing = false;
+                audit.isSubstitute = true;
+                return { rank: getRatingRank(biomarker), audit };
             }
         }
-        return null;
+        return { rank: null, audit };
     }
 
     if (tierItem.rule === 'lowest') {
+        audit.ruleApplied = 'lowest';
         // Collect all available ranks from relatedNames and return the lowest
-        const ranks = tierItem.relatedNames
-            .map(name => {
-                const biomarker = bloodData.find(bm => bm.display_name === name);
-                return biomarker ? getRatingRank(biomarker) : null;
-            })
-            .filter((r): r is number => r !== null);
+        const availableBiomarkers = tierItem.relatedNames
+            .map(name => bloodData.find(bm => bm.display_name === name))
+            .filter((bm): bm is BloodBiomarker => bm !== undefined && bm.value !== null && bm.value !== undefined);
 
-        return ranks.length > 0 ? Math.min(...ranks) : null;
+        if (availableBiomarkers.length > 0) {
+            const ranksWithNames = availableBiomarkers.map(bm => ({
+                name: bm.display_name,
+                rank: getRatingRank(bm)
+            })).filter(r => r.rank !== null) as { name: string, rank: number }[];
+
+            if (ranksWithNames.length > 0) {
+                const lowest = ranksWithNames.reduce((prev, curr) => prev.rank < curr.rank ? prev : curr);
+                audit.apiNameUsed = lowest.name;
+                audit.isMissing = false;
+                return { rank: lowest.rank, audit };
+            }
+        }
+        return { rank: null, audit };
     }
 
-    return null;
+    return { rank: null, audit };
 }
 
 /**
@@ -213,6 +259,7 @@ export interface BaselineScoreResult {
     cappingResult: BaselineCappingResult;
     isCappedOverall: boolean;
     preCappedScore: number;
+    markerAudits: BiomarkerAudit[];
 }
 
 /**
@@ -257,6 +304,7 @@ export function normalizeTierScore(
 export interface BaselineCappingResult {
     lowestCap: number | null;
     appliedRules: { biomarkerName: string; rank: number; capScore: number }[];
+    cappingAudits: BiomarkerAudit[];
 }
 
 /**
@@ -266,21 +314,46 @@ export interface BaselineCappingResult {
 export function getBaselineCappingResult(bloodData: BloodBiomarker[], tierData: TieredBiomarker[]): BaselineCappingResult {
     let lowestCap: number | null = null;
     const appliedRules: { biomarkerName: string; rank: number; capScore: number }[] = [];
+    const cappingAudits: BiomarkerAudit[] = [];
 
     BASELINE_CAPPING_RULES.forEach(rule => {
         let rank: number | null = null;
+        let auditData: Partial<BiomarkerAudit> = {
+            name: rule.biomarkerName,
+            isMissing: true
+        };
 
         // 1. Check if it's a tiered biomarker to handle complex rules (like Body Fat % substitution)
         const tieredItem = tierData.find(item => item.name === rule.biomarkerName);
         if (tieredItem) {
-            rank = calculateTierRank(tieredItem, bloodData);
+            const { rank: tierRank, audit: tierAudit } = calculateTierRank(tieredItem, bloodData);
+            rank = tierRank;
+            auditData = { ...auditData, ...tierAudit };
         } else {
             // 2. Otherwise look it up directly in bloodData
             const biomarker = bloodData.find(bm => bm.display_name === rule.biomarkerName);
             if (biomarker) {
                 rank = getRatingRank(biomarker);
+                auditData.apiNameUsed = biomarker.display_name;
+                auditData.isMissing = false;
             }
         }
+
+        const audit: BiomarkerAudit = {
+            name: rule.biomarkerName,
+            apiNameUsed: auditData.apiNameUsed || null,
+            originalRank: rank,
+            cappedRank: rank,
+            maxRank: 5, // Default for non-tiered if we don't have better info
+            targetScore: 0,
+            finalScore: 0,
+            ruleApplied: auditData.ruleApplied || null,
+            isMissing: auditData.isMissing ?? true,
+            isSubstitute: auditData.isSubstitute ?? false,
+            substituteValue: auditData.substituteValue
+        };
+
+        cappingAudits.push(audit);
 
         if (rank !== null) {
             const applicableCap = rule.caps.find(c => c.rank === rank);
@@ -297,5 +370,5 @@ export function getBaselineCappingResult(bloodData: BloodBiomarker[], tierData: 
         }
     });
 
-    return { lowestCap, appliedRules };
+    return { lowestCap, appliedRules, cappingAudits };
 }
