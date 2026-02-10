@@ -1,5 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
-import { fetchHealthData } from '../services/api';
+import { useState, useMemo } from 'react';
 import type { BloodBiomarker, HealthDataResponse } from '../services/api';
 import { getRatingRank, calculateTierRank, applyContextRules, applyCappingRules, calculateFinalScore, getBaselineCappingResult, calculateMaxTierRank, type BaselineScoreResult, type TierTotals, type TierScores, type BiomarkerAudit } from '../utils/scoreCalculator';
 import { TIER_DATA } from '../data/tierData';
@@ -62,35 +61,24 @@ const RatingBadge = ({ rating, score, rank, isCapped }: { rating: string; score?
     );
 };
 
-const BiomarkerList = () => {
-    const [data, setData] = useState<HealthDataResponse | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+interface BiomarkerListProps {
+    healthData: HealthDataResponse | null;
+    loading: boolean;
+    error: string | null;
+    bmi?: number | null;
+}
+
+const BiomarkerList = ({ healthData, loading, error, bmi }: BiomarkerListProps) => {
+    // Internal state moved to props
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState<'all' | 'tiered' | 'finalized' | 'audit'>('all');
 
-    useEffect(() => {
-        const getData = async () => {
-            try {
-                setLoading(true);
-                const result = await fetchHealthData();
-                setData(result);
-                setError(null);
-            } catch (err: any) {
-                console.error('API fetch failed:', err);
-                setError(err.message || 'An error occurred while fetching real-time data');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        getData();
-    }, []);
+    // useEffect removed - Data fetching is now handled by parent component
 
     const categorizedData = useMemo(() => {
-        if (!data?.data?.blood?.data) return {};
+        if (!healthData?.data?.blood?.data) return {};
 
-        const bloodData = data.data.blood.data;
+        const bloodData = healthData.data.blood.data;
         const groups: { [key: string]: any[] } = {};
 
         if (activeTab === 'all') {
@@ -138,7 +126,7 @@ const BiomarkerList = () => {
                 // SUPPRESSION: Remove from output - ONLY for Finalized tab
                 if (showProcessed && action?.action === 'suppress') return;
 
-                let { rank } = calculateTierRank(tierItem, bloodData);
+                let { rank } = calculateTierRank(tierItem, bloodData, bmi);
 
                 // If missing from API and in processing tabs, skip completely (Denominator Reduction)
                 if (showProcessed && rank === null) return;
@@ -195,16 +183,16 @@ const BiomarkerList = () => {
         }
 
         return groups;
-    }, [data, searchTerm, activeTab]);
+    }, [healthData, searchTerm, activeTab, bmi]);
 
     const totalCount = useMemo(() => {
         return Object.values(categorizedData).reduce((acc, curr) => acc + curr.length, 0);
     }, [categorizedData]);
 
     const baselineScore = useMemo((): BaselineScoreResult | null => {
-        if ((activeTab !== 'finalized' && activeTab !== 'audit') || !data?.data?.blood?.data) return null;
+        if ((activeTab !== 'finalized' && activeTab !== 'audit') || !healthData?.data?.blood?.data) return null;
 
-        const bloodData = data.data.blood.data;
+        const bloodData = healthData.data.blood.data;
         const finalizedScores: TierScores = {
             A: { total: 0, achieved: 0 },
             B: { total: 0, achieved: 0 },
@@ -224,7 +212,7 @@ const BiomarkerList = () => {
 
         TIER_DATA.forEach(tierItem => {
             const action = allActions[tierItem.name];
-            const { rank: rawRank, audit: rankAudit } = calculateTierRank(tierItem, bloodData);
+            const { rank: rawRank, audit: rankAudit } = calculateTierRank(tierItem, bloodData, bmi);
 
             let rank = rawRank;
             let ruleApplied = rankAudit.ruleApplied || null;
@@ -283,7 +271,7 @@ const BiomarkerList = () => {
 
         const totalBaselineScore = normalizedScores.A + normalizedScores.B + normalizedScores.C;
         const totalOriginalScore = originalTotals.A + originalTotals.B + originalTotals.C;
-        const cappingResult = getBaselineCappingResult(bloodData, TIER_DATA);
+        const cappingResult = getBaselineCappingResult(bloodData, TIER_DATA, bmi);
 
         let finalBaselineScore = totalBaselineScore;
         let isCappedOverall = false;
@@ -307,7 +295,7 @@ const BiomarkerList = () => {
             preCappedScore: totalBaselineScore,
             markerAudits
         };
-    }, [data, activeTab]);
+    }, [healthData, activeTab, bmi]);
 
     if (loading) return (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '100px', color: 'var(--text-secondary)' }}>

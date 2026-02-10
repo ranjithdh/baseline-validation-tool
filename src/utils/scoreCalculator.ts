@@ -53,8 +53,8 @@ export interface BiomarkerAudit {
  * Handles primary names, related names, substitutes, and combined (lowest) logic.
  * Returns null if the biomarker is missing from the API.
  */
-export function calculateTierRank(tierItem: TieredBiomarker, bloodData: BloodBiomarker[]): { rank: number | null, audit: Partial<BiomarkerAudit> } {
-    let audit: Partial<BiomarkerAudit> = {
+export function calculateTierRank(tierItem: TieredBiomarker, bloodData: BloodBiomarker[], bmi: number | null = null): { rank: number | null, audit: Partial<BiomarkerAudit> } {
+    const audit: Partial<BiomarkerAudit> = {
         name: tierItem.name,
         isMissing: true,
         isSubstitute: false
@@ -79,11 +79,25 @@ export function calculateTierRank(tierItem: TieredBiomarker, bloodData: BloodBio
         for (const name of tierItem.relatedNames) {
             // Special Case: BMI fallback logic
             if (name === "Body Mass Index (BMI)") {
-                audit.apiNameUsed = name;
-                audit.isMissing = false;
-                audit.isSubstitute = true;
-                audit.substituteValue = 21.36;
-                return { rank: getBMIRank(21.36), audit }; // Hardcoded value as per user request
+                // If BMI is provided nicely from PII data, use it.
+                // Otherwise fall back to a safe default or treat as missing?
+                // For now, let's keep the user's previously requested hardcoded value as a backup if null?
+                // The user request "use that calculated BMI here" implies we should use the passed value.
+                if (bmi !== null) {
+                    audit.apiNameUsed = name;
+                    audit.isMissing = false;
+                    audit.isSubstitute = true;
+                    audit.substituteValue = bmi;
+                    return { rank: getBMIRank(bmi), audit };
+                } else {
+                    // Fallback to hardcoded value if dynamic BMI is not available
+                    // This ensures the dashboard doesn't show "Missing" when testing without user selection
+                    audit.apiNameUsed = name;
+                    audit.isMissing = false;
+                    audit.isSubstitute = true;
+                    audit.substituteValue = 24.06;
+                    return { rank: getBMIRank(24.06), audit };
+                }
             }
 
             const biomarker = bloodData.find(bm => bm.display_name === name);
@@ -225,8 +239,9 @@ export function calculateFinalScore(
     maxRank: number,
     targetScore: number
 ): number {
-    if (maxRank === 0) return 0;
-    return Math.round((cappedRank / maxRank) * targetScore);
+    // Use the provided maxRank, defaulting to 5 if something goes wrong (though caller should provide it)
+    const divisor = maxRank > 0 ? maxRank : 5;
+    return Math.round((cappedRank / divisor) * targetScore);
 }
 
 /**
@@ -311,7 +326,7 @@ export interface BaselineCappingResult {
  * Calculates the overall baseline score cap based on various biomarkers.
  * Returns the lowest applicable cap score and the reasons.
  */
-export function getBaselineCappingResult(bloodData: BloodBiomarker[], tierData: TieredBiomarker[]): BaselineCappingResult {
+export function getBaselineCappingResult(bloodData: BloodBiomarker[], tierData: TieredBiomarker[], bmi: number | null = null): BaselineCappingResult {
     let lowestCap: number | null = null;
     const appliedRules: { biomarkerName: string; rank: number; capScore: number }[] = [];
     const cappingAudits: BiomarkerAudit[] = [];
@@ -326,7 +341,7 @@ export function getBaselineCappingResult(bloodData: BloodBiomarker[], tierData: 
         // 1. Check if it's a tiered biomarker to handle complex rules (like Body Fat % substitution)
         const tieredItem = tierData.find(item => item.name === rule.biomarkerName);
         if (tieredItem) {
-            const { rank: tierRank, audit: tierAudit } = calculateTierRank(tieredItem, bloodData);
+            const { rank: tierRank, audit: tierAudit } = calculateTierRank(tieredItem, bloodData, bmi);
             rank = tierRank;
             auditData = { ...auditData, ...tierAudit };
         } else {

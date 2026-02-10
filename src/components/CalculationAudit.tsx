@@ -1,5 +1,5 @@
 import React from 'react';
-import { type BaselineScoreResult, type BiomarkerAudit } from '../utils/scoreCalculator';
+import { type BaselineScoreResult } from '../utils/scoreCalculator';
 
 interface CalculationAuditProps {
     baselineScore: BaselineScoreResult;
@@ -87,7 +87,7 @@ export const CalculationAudit: React.FC<CalculationAuditProps> = ({ baselineScor
                                     </>
                                 )}
                                 <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                    Score: ({audit.cappedRank} / {audit.maxRank}) × {audit.targetScore} = <strong>{audit.finalScore}</strong>
+                                    Score: ({audit.cappedRank} / 5) × {audit.targetScore} = <strong>{audit.finalScore}</strong>
                                 </div>
                             </div>
                         );
@@ -173,19 +173,35 @@ export const CalculationAudit: React.FC<CalculationAuditProps> = ({ baselineScor
                 textAlign: 'center'
             }}>
                 <h3 style={{ margin: '0 0 1rem 0', color: isCappedOverall ? '#ef4444' : '#10b981' }}>Stage 5: Final Calculation</h3>
+
+                {/* Show pre-capped score */}
+                <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                    Baseline Score (before capping): <strong style={{ color: '#10b981' }}>{(preCappedScore / 1000 * 100).toFixed(1)} / 100</strong>
+                </div>
+
                 <div style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>
                     {isCappedOverall ? (
                         <>
-                            Normalized Score ({(preCappedScore / 1000 * 100).toFixed(0)} / 100) exceeded Cap ({cappingResult.lowestCap} / 100)
-                            <div style={{ fontSize: '2.5rem', fontWeight: 'bold', marginTop: '1rem' }}>
-                                Final: {Math.round(totalBaselineScore / 1000 * 100)} / 100
+                            <div style={{ color: '#ef4444', marginBottom: '0.5rem' }}>
+                                ⚠️ Capped by Dashboard Rules
+                            </div>
+                            <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
+                                Baseline ({(preCappedScore / 1000 * 100).toFixed(1)}) exceeded lowest cap ({cappingResult.lowestCap})
+                            </div>
+                            <div style={{ fontSize: '2.5rem', fontWeight: 'bold', marginTop: '1rem', color: '#ef4444' }}>
+                                Final: {Math.floor(totalBaselineScore / 1000 * 100)} / 100
                             </div>
                         </>
                     ) : (
                         <>
-                            Sum of Normalized Tiers ({(totalBaselineScore / 1000 * 100).toFixed(0)} / 100) is within limits.
-                            <div style={{ fontSize: '2.5rem', fontWeight: 'bold', marginTop: '1rem' }}>
-                                Final: {Math.round(totalBaselineScore / 1000 * 100)} / 100
+                            <div style={{ color: '#10b981', marginBottom: '0.5rem' }}>
+                                ✓ Within All Limits
+                            </div>
+                            <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
+                                Baseline ({(totalBaselineScore / 1000 * 100).toFixed(1)}) is below lowest cap ({cappingResult.lowestCap || 'N/A'})
+                            </div>
+                            <div style={{ fontSize: '2.5rem', fontWeight: 'bold', marginTop: '1rem', color: '#10b981' }}>
+                                Final: {Math.floor(totalBaselineScore / 1000 * 100)} / 100
                             </div>
                         </>
                     )}

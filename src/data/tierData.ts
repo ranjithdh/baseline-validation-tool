@@ -37,13 +37,13 @@ export const TIER_DATA: TieredBiomarker[] = [
     // Tier B (240 points total)
     { name: "Triglycerides (TGL)", tier: "B", targetScore: 30 },
     { name: "HDL Cholesterol", tier: "B", targetScore: 30 },
-    { name: "Small LDL", tier: "B", targetScore: 30 },
+    { name: "Small Dense Low-Density Lipoprotein Cholesterol (sdLDL-C)", tier: "B", targetScore: 30 },
     { name: "Homocysteine", tier: "B", targetScore: 30 },
-    { name: "HOMA-IR", tier: "B", targetScore: 10 },
+    // { name: "HOMA-IR", tier: "B", targetScore: 10 },
     { name: "Uric Acid", tier: "B", targetScore: 20 },
     { name: "Cortisol", tier: "B", targetScore: 20 },
-    { name: "Free T3", tier: "B", targetScore: 30 },
-    { name: "Free T4", tier: "B", targetScore: 5 },
+    { name: "Free Triiodothyronine (FT3)", tier: "B", targetScore: 30 },
+    { name: "Free thyroxine (FT4)", tier: "B", targetScore: 5 },
     { name: "Lipoprotein A [LP(A)]", tier: "B", targetScore: 15 },
     {
         name: "Blood Pressure",
