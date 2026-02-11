@@ -11,7 +11,9 @@ export interface User {
 
 
 
-const API_URL = 'https://api.stg.dh.deepholistics.com/v4/human-token/users';
+import { API_BASE_URL, getCommonHeaders } from './config';
+
+const API_URL = `${API_BASE_URL}/v4/human-token/users`;
 
 let cachedUsers: User[] | null = null;
 
@@ -26,12 +28,7 @@ export const userService = {
         try {
             const response = await fetch(API_URL, {
                 method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'access_token': token || '',
-                    'client_id': 'qXsGPcHJkb9MTwD5fNFpzRrngjtvy4dW',
-                    'user_timezone': 'Asia/Calcutta',
-                }
+                headers: getCommonHeaders(token)
             });
 
             if (!response.ok) {
