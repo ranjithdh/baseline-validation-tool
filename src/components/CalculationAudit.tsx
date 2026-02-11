@@ -1,12 +1,12 @@
-import React from 'react';
 import { type BaselineScoreResult } from '../utils/scoreCalculator';
+import { BASELINE_CAPPING_RULES } from '../data/baselineCappingRules';
 
 interface CalculationAuditProps {
     baselineScore: BaselineScoreResult;
 }
 
 export const CalculationAudit: React.FC<CalculationAuditProps> = ({ baselineScore }) => {
-    const { markerAudits, cappingResult, finalizedScores, normalizedScores, originalTotals, totalBaselineScore, preCappedScore, isCappedOverall } = baselineScore;
+    const { markerAudits, cappingResult, finalizedScores, normalizedScores, originalTotals, totalBaselineScore, totalOriginalScore, preCappedScore, isCappedOverall } = baselineScore;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', marginTop: '2rem' }}>
@@ -19,35 +19,49 @@ export const CalculationAudit: React.FC<CalculationAuditProps> = ({ baselineScor
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
                     Matching internal biomarkers to raw data from the DeepHolistics API.
                 </p>
-                <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                        <thead>
-                            <tr style={{ textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                                <th style={{ padding: '0.75rem' }}>Internal Name</th>
-                                <th style={{ padding: '0.75rem' }}>API Source Name</th>
-                                <th style={{ padding: '0.75rem' }}>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {markerAudits.map((audit, idx) => (
-                                <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                    <td style={{ padding: '0.75rem' }}>{audit.name}</td>
-                                    <td style={{ padding: '0.75rem', fontFamily: 'monospace', color: audit.apiNameUsed ? 'inherit' : '#ef4444' }}>
-                                        {audit.apiNameUsed || 'Not Found'}
-                                    </td>
-                                    <td style={{ padding: '0.75rem' }}>
-                                        {audit.isMissing ? (
-                                            <span style={{ color: '#ef4444' }}>✖ Missing (Denominator Reduced)</span>
-                                        ) : audit.isSubstitute ? (
-                                            <span style={{ color: '#f59e0b' }}>⚠ Substitute Used ({audit.substituteValue})</span>
-                                        ) : (
-                                            <span style={{ color: '#10b981' }}>✔ Direct Match</span>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {(['A', 'B', 'C'] as const).map(tier => {
+                        const tierMarkers = markerAudits.filter(a => a.tier === tier);
+                        if (tierMarkers.length === 0) return null;
+
+                        return (
+                            <div key={tier}>
+                                <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#10b981', marginBottom: '0.75rem', padding: '4px 8px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '4px', display: 'inline-block' }}>
+                                    Tier {tier}
+                                </div>
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                        <thead>
+                                            <tr style={{ textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                                <th style={{ padding: '0.75rem' }}>Internal Name</th>
+                                                <th style={{ padding: '0.75rem' }}>API Source Name</th>
+                                                <th style={{ padding: '0.75rem' }}>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {tierMarkers.map((audit, idx) => (
+                                                <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                                    <td style={{ padding: '0.75rem' }}>{audit.name}</td>
+                                                    <td style={{ padding: '0.75rem', fontFamily: 'monospace', color: audit.apiNameUsed ? 'inherit' : '#ef4444' }}>
+                                                        {audit.apiNameUsed || 'Not Found'}
+                                                    </td>
+                                                    <td style={{ padding: '0.75rem' }}>
+                                                        {audit.isMissing ? (
+                                                            <span style={{ color: '#ef4444' }}>✖ Missing (Denominator Reduced)</span>
+                                                        ) : audit.isSubstitute ? (
+                                                            <span style={{ color: '#f59e0b' }}>⚠ Substitute Used ({audit.substituteValue})</span>
+                                                        ) : (
+                                                            <span style={{ color: '#10b981' }}>✔ Direct Match</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </section>
 
@@ -60,34 +74,48 @@ export const CalculationAudit: React.FC<CalculationAuditProps> = ({ baselineScor
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
                     Applying contextual rules and peer capping to individual rating ranks.
                 </p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
-                    {markerAudits.filter(a => !a.isMissing).map((audit, idx) => {
-                        const hasRule = !!audit.ruleApplied;
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    {(['A', 'B', 'C'] as const).map(tier => {
+                        const tierMarkers = markerAudits.filter(a => a.tier === tier && !a.isMissing);
+                        if (tierMarkers.length === 0) return null;
+
                         return (
-                            <div key={idx} style={{
-                                padding: '1rem',
-                                background: 'rgba(255,255,255,0.02)',
-                                borderRadius: '8px',
-                                border: hasRule ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(255,255,255,0.05)'
-                            }}>
-                                <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>{audit.name}</div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.25rem' }}>
-                                    <span>Original Rank:</span>
-                                    <span>{audit.originalRank}</span>
+                            <div key={tier}>
+                                <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#10b981', marginBottom: '0.75rem', padding: '4px 8px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '4px', display: 'inline-block' }}>
+                                    Tier {tier}
                                 </div>
-                                {hasRule && (
-                                    <>
-                                        <div style={{ fontSize: '0.7rem', color: '#10b981', fontStyle: 'italic', marginBottom: '0.25rem' }}>
-                                            Applied: {audit.ruleTitle || audit.ruleApplied}
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 'bold', color: '#10b981' }}>
-                                            <span>Final Capped Rank:</span>
-                                            <span>{audit.cappedRank}</span>
-                                        </div>
-                                    </>
-                                )}
-                                <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                    Score: ({audit.cappedRank} / 5) × {audit.targetScore} = <strong>{audit.finalScore}</strong>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+                                    {tierMarkers.map((audit, idx) => {
+                                        const hasRule = !!audit.ruleApplied;
+                                        return (
+                                            <div key={idx} style={{
+                                                padding: '1rem',
+                                                background: 'rgba(255,255,255,0.02)',
+                                                borderRadius: '8px',
+                                                border: hasRule ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(255,255,255,0.05)'
+                                            }}>
+                                                <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>{audit.name}</div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.25rem' }}>
+                                                    <span>Original Rank:</span>
+                                                    <span>{audit.originalRank}</span>
+                                                </div>
+                                                {hasRule && (
+                                                    <>
+                                                        <div style={{ fontSize: '0.7rem', color: '#10b981', fontStyle: 'italic', marginBottom: '0.25rem' }}>
+                                                            Applied: {audit.ruleTitle || audit.ruleApplied}
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: 'bold', color: '#10b981' }}>
+                                                            <span>Final Capped Rank:</span>
+                                                            <span>{audit.cappedRank}</span>
+                                                        </div>
+                                                    </>
+                                                )}
+                                                <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                                    Score: ({audit.cappedRank} / 5) × {audit.targetScore} = <strong>{audit.finalScore}</strong>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         );
@@ -137,25 +165,59 @@ export const CalculationAudit: React.FC<CalculationAuditProps> = ({ baselineScor
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
                     Evaluation of the 16 capping biomarkers to determine the final dashboard limit.
                 </p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem' }}>
                     {cappingResult.cappingAudits.map((audit, idx) => {
                         const trigger = cappingResult.appliedRules.find(r => r.biomarkerName === audit.name);
                         const isWinningCap = trigger && trigger.capScore === cappingResult.lowestCap;
+                        const rule = BASELINE_CAPPING_RULES.find(r => r.metricId === audit.metricId);
 
                         return (
                             <div key={idx} style={{
-                                padding: '0.75rem',
-                                borderRadius: '6px',
+                                padding: '1rem',
+                                borderRadius: '8px',
                                 background: isWinningCap ? 'rgba(239, 68, 68, 0.1)' : 'rgba(255,255,255,0.02)',
-                                border: isWinningCap ? '1px solid #ef4444' : '1px solid rgba(255,255,255,0.05)'
+                                border: isWinningCap ? '1px solid #ef4444' : '1px solid rgba(255,255,255,0.05)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.75rem'
                             }}>
-                                <div style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>{audit.name}</div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                    Rank: {audit.isMissing ? 'N/A' : audit.originalRank}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{audit.name}</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                        Rank: {audit.isMissing ? 'N/A' : audit.originalRank}
+                                    </div>
                                 </div>
-                                {trigger && (
-                                    <div style={{ fontSize: '0.75rem', color: isWinningCap ? '#ef4444' : '#f59e0b', fontWeight: 'bold' }}>
-                                        Cap: {trigger.capScore}
+
+                                <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '4px', padding: '0.5rem' }}>
+                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        Available Caps
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {rule?.caps.map((cap, cidx) => {
+                                            const isSelected = !audit.isMissing && audit.originalRank === cap.rank;
+                                            return (
+                                                <div key={cidx} style={{
+                                                    display: 'flex',
+                                                    justifyContent: 'space-between',
+                                                    fontSize: '0.75rem',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '3px',
+                                                    background: isSelected ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+                                                    color: isSelected ? '#10b981' : 'rgba(255,255,255,0.6)',
+                                                    fontWeight: isSelected ? 'bold' : 'normal',
+                                                    border: isSelected ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent'
+                                                }}>
+                                                    <span>Rank {cap.rank}</span>
+                                                    <span>Score: {cap.capScore}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {isWinningCap && (
+                                    <div style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '4px', borderRadius: '4px' }}>
+                                        Lowest Cap: {trigger.capScore}
                                     </div>
                                 )}
                             </div>
@@ -189,7 +251,7 @@ export const CalculationAudit: React.FC<CalculationAuditProps> = ({ baselineScor
                                 Baseline ({(preCappedScore / 1000 * 100).toFixed(1)}) exceeded lowest cap ({cappingResult.lowestCap})
                             </div>
                             <div style={{ fontSize: '2.5rem', fontWeight: 'bold', marginTop: '1rem', color: '#ef4444' }}>
-                                Final: {Math.floor(totalBaselineScore / 1000 * 100)} / 100
+                                Final: {((totalBaselineScore / totalOriginalScore) * 100).toFixed(1)} / 100
                             </div>
                         </>
                     ) : (
@@ -198,10 +260,10 @@ export const CalculationAudit: React.FC<CalculationAuditProps> = ({ baselineScor
                                 ✓ Within All Limits
                             </div>
                             <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
-                                Baseline ({(totalBaselineScore / 1000 * 100).toFixed(1)}) is below lowest cap ({cappingResult.lowestCap || 'N/A'})
+                                Baseline {((totalBaselineScore / totalOriginalScore) * 100).toFixed(1)} is below lowest cap ({cappingResult.lowestCap || 'N/A'})
                             </div>
                             <div style={{ fontSize: '2.5rem', fontWeight: 'bold', marginTop: '1rem', color: '#10b981' }}>
-                                Final: {Math.floor(totalBaselineScore / 1000 * 100)} / 100
+                                Final: {((totalBaselineScore / totalOriginalScore) * 100).toFixed(1)} / 100
                             </div>
                         </>
                     )}

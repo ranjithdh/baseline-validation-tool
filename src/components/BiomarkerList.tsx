@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { BloodBiomarker, HealthDataResponse } from '../services/api';
-import { getRatingRank, calculateTierRank, applyContextRules, applyCappingRules, calculateFinalScore, getBaselineCappingResult, calculateMaxTierRank, type BaselineScoreResult, type TierTotals, type TierScores, type BiomarkerAudit } from '../utils/scoreCalculator';
+import { getRatingRank, calculateTierRank, applyContextRules, applyCappingRules, calculateFinalScore, getBaselineCappingResult, calculateMaxTierRank, calculateOriginalTierTotals, normalizeTierScore, type BaselineScoreResult, type TierTotals, type TierScores, type BiomarkerAudit } from '../utils/scoreCalculator';
 import { TIER_DATA } from '../data/tierData';
 import { CalculationAudit } from './CalculationAudit';
 
@@ -193,86 +193,144 @@ const BiomarkerList = ({ healthData, loading, error, bmi }: BiomarkerListProps) 
         if ((activeTab !== 'finalized' && activeTab !== 'audit') || !healthData?.data?.blood?.data) return null;
 
         const bloodData = healthData.data.blood.data;
+
+        // 1. Calculate Ranks & Populate Map
+        const currentRanks: Record<string, number | null> = {};
+        TIER_DATA.forEach(tierItem => {
+            const { rank } = calculateTierRank(tierItem, bloodData, bmi);
+            if (tierItem.metric_id) {
+                currentRanks[tierItem.metric_id] = rank;
+            }
+        });
+
+        // 2. Apply Rules
+        const contextResults = applyContextRules(currentRanks);
+        const cappingResults = applyCappingRules(currentRanks);
+
+        // 3. Calculate Scores
         const finalizedScores: TierScores = {
             A: { total: 0, achieved: 0 },
             B: { total: 0, achieved: 0 },
             C: { total: 0, achieved: 0 }
         };
-
-        const initialRanks: Record<string, number | null> = {};
-        bloodData.forEach(bm => {
-            initialRanks[bm.display_name] = getRatingRank(bm);
-        });
-
-        const contextActions = applyContextRules(initialRanks);
-        const cappingActions = applyCappingRules(initialRanks);
-        const allActions = { ...contextActions, ...cappingActions };
-
         const markerAudits: BiomarkerAudit[] = [];
 
-        TIER_DATA.forEach(tierItem => {
-            const action = allActions[tierItem.name];
-            const { rank: rawRank, audit: rankAudit } = calculateTierRank(tierItem, bloodData, bmi);
+        TIER_DATA.forEach(item => {
+            const { rank, audit } = calculateTierRank(item, bloodData, bmi);
 
-            let rank = rawRank;
-            let ruleApplied = rankAudit.ruleApplied || null;
-            let ruleTitle = action?.ruleTitle;
+            // Determine final rank after rules (using ID lookup)
+            const contextAction = item.metric_id ? contextResults[item.metric_id] : undefined;
+            const cappingAction = item.metric_id ? cappingResults[item.metric_id] : undefined;
 
-            const audit: BiomarkerAudit = {
-                name: tierItem.name,
-                tier: tierItem.tier,
-                apiNameUsed: rankAudit.apiNameUsed || null,
-                originalRank: rank,
-                cappedRank: rank,
-                maxRank: calculateMaxTierRank(tierItem, bloodData),
-                targetScore: tierItem.targetScore,
-                finalScore: 0,
-                ruleApplied: ruleApplied,
-                ruleTitle: ruleTitle,
-                isMissing: rankAudit.isMissing ?? true,
-                isSubstitute: rankAudit.isSubstitute ?? false,
-                substituteValue: rankAudit.substituteValue
-            };
+            let cappedRank = rank;
+            let ruleApplied: string | null = audit.ruleApplied || null;
+            let ruleTitle: string | undefined = audit.ruleTitle;
 
-            if (action?.action === 'suppress') {
-                audit.ruleApplied = 'suppress';
-                markerAudits.push(audit);
-                return;
-            }
-
-            if (rank === null) {
-                markerAudits.push(audit);
-                return;
-            }
-
-            if (action?.action === 'cap' && action.capValue !== undefined) {
-                if (rank > action.capValue) {
-                    rank = action.capValue;
-                    audit.cappedRank = rank;
-                    audit.ruleApplied = (audit.ruleApplied ? audit.ruleApplied + ' + ' : '') + 'cap';
+            // Priority 1: Context Rules (Suppress/Cap)
+            if (contextAction?.action === 'suppress') {
+                cappedRank = null;
+                ruleApplied = (ruleApplied ? ruleApplied + ' + ' : '') + 'suppress';
+                ruleTitle = contextAction.ruleTitle;
+            } else if (contextAction?.action === 'cap') {
+                const capVal = contextAction.capValue;
+                if (capVal !== undefined && cappedRank !== null && cappedRank > capVal) { // 5 (Best) > 3 (Cap) -> Reset to 3 (Cap)
+                    cappedRank = capVal;
+                    ruleApplied = (ruleApplied ? ruleApplied + ' + ' : '') + 'cap';
+                    ruleTitle = contextAction.ruleTitle;
                 }
             }
 
-            const finalScore = calculateFinalScore(rank, audit.maxRank, tierItem.targetScore);
-            audit.finalScore = finalScore;
-            markerAudits.push(audit);
+            // Priority 2: Capping Rules
+            if (cappingAction?.action === 'cap') {
+                const capVal = cappingAction.capValue;
+                if (capVal !== undefined && cappedRank !== null && cappedRank > capVal) {
+                    cappedRank = capVal;
+                    ruleApplied = (ruleApplied ? ruleApplied + ' + ' : '') + 'cap';
+                    ruleTitle = cappingAction.ruleTitle;
+                }
+            }
 
-            const tier = tierItem.tier as 'A' | 'B' | 'C';
-            finalizedScores[tier].achieved += finalScore;
-            finalizedScores[tier].total += tierItem.targetScore;
+            // Calculate Max Rank
+            const maxRank = calculateMaxTierRank(item, bloodData);
+
+            // Calculate Final Score
+            let finalScore = 0;
+            // Only calculate score if not suppressed (cappedRank != null) AND not missing (rank != null)
+            if (cappedRank !== null) {
+                finalScore = calculateFinalScore(cappedRank, maxRank, item.targetScore);
+            }
+
+            // Create Audit Entry
+            const finalAudit: BiomarkerAudit = {
+                name: item.name,
+                tier: item.tier,
+                apiNameUsed: audit.apiNameUsed || null,
+                originalRank: rank,
+                cappedRank: cappedRank,
+                maxRank: maxRank,
+                targetScore: item.targetScore,
+                finalScore: finalScore,
+                ruleApplied: ruleApplied,
+                ruleTitle: ruleTitle,
+                isMissing: audit.isMissing ?? true,
+                isSubstitute: audit.isSubstitute ?? false,
+                substituteValue: audit.substituteValue
+            };
+            markerAudits.push(finalAudit);
+
+            // Accumulate Tier Scores
+            // Only add if we have a valid result (not missing/suppressed)?
+            // "Biomarkers are NOT suppressed if they are simply missing..." -> Missing means rank is null.
+            // If rank is null, cappedRank is null.
+            // But verify: calculateTierRank returns null if missing.
+            // So if missing, finalScore is 0.
+            // But effectively, missing data *should* penalize score by being 0 achieved out of Target Total.
+            // So we ALWAYS add to Total.
+            // But only add to Acheived if we have a score.
+
+            const tier = item.tier as 'A' | 'B' | 'C';
+            if (cappedRank !== null) {
+                if (import.meta.env.MODE === 'development') {
+                    console.log(`DebugItem: ${item.name} | Tier: ${tier} | Target: ${item.targetScore} | Current A Total: ${finalizedScores.A.total}`);
+                }
+                finalizedScores[tier].achieved += finalScore;
+                finalizedScores[tier].total += item.targetScore;
+            }
+            // Always add to total? Or only if available?
+            // The tier system usually counts available markers.
+            // "Normalize a tier score to the original tier total."
+            // This implies we calculate based on *available* markers?
+            // normalizeTierScore formula: (Achieved / FinalTierTotal) * OriginalTierTotal.
+            // FinalTierTotal = Sum of targets for AVAILABLE markers.
+
+
         });
 
-        const originalTotals: TierTotals = { A: 600, B: 240, C: 160 };
+        if (import.meta.env.MODE === 'development') {
+            const missing = markerAudits.filter(a => a.isMissing).map(a => a.name);
+            const suppressed = markerAudits.filter(a => !a.isMissing && a.ruleApplied?.includes('suppress')).map(a => a.name);
+            console.warn('Configuration Audit:', {
+                missingCount: missing.length,
+                missingBiomarkers: missing,
+                suppressedCount: suppressed.length,
+                suppressedBiomarkers: suppressed,
+                finalizedScores
+            });
+        }
+
+        // Calculate Totals & Normalization
+        const originalTotals = calculateOriginalTierTotals();
         const normalizedScores: TierTotals = {
-            A: finalizedScores.A.total > 0 ? (finalizedScores.A.achieved / finalizedScores.A.total) * originalTotals.A : 0,
-            B: finalizedScores.B.total > 0 ? (finalizedScores.B.achieved / finalizedScores.B.total) * originalTotals.B : 0,
-            C: finalizedScores.C.total > 0 ? (finalizedScores.C.achieved / finalizedScores.C.total) * originalTotals.C : 0,
+            A: normalizeTierScore(finalizedScores.A.achieved, finalizedScores.A.total, originalTotals.A),
+            B: normalizeTierScore(finalizedScores.B.achieved, finalizedScores.B.total, originalTotals.B),
+            C: normalizeTierScore(finalizedScores.C.achieved, finalizedScores.C.total, originalTotals.C),
         };
 
         const totalBaselineScore = normalizedScores.A + normalizedScores.B + normalizedScores.C;
         const totalOriginalScore = originalTotals.A + originalTotals.B + originalTotals.C;
-        const cappingResult = getBaselineCappingResult(bloodData, TIER_DATA, bmi);
 
+        // Baseline Capping
+        const cappingResult = getBaselineCappingResult(bloodData, TIER_DATA, bmi);
         let finalBaselineScore = totalBaselineScore;
         let isCappedOverall = false;
 
@@ -410,7 +468,7 @@ const BiomarkerList = ({ healthData, loading, error, bmi }: BiomarkerListProps) 
                                 }}>
                                     <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Final Baseline Score</div>
                                     <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: baselineScore.isCappedOverall ? '#ef4444' : '#10b981' }}>
-                                        {Math.round((baselineScore.totalBaselineScore / baselineScore.totalOriginalScore) * 100)} / 100
+                                        {((baselineScore.totalBaselineScore / baselineScore.totalOriginalScore) * 100).toFixed(1)} / 100
                                     </div>
                                     {baselineScore.isCappedOverall && (
                                         <div style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold', marginTop: '0.5rem' }}>

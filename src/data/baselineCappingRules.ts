@@ -1,11 +1,13 @@
+import { METRIC_IDS } from './biomarkerIds';
+
 export interface BaselineCapRule {
-    biomarkerName: string;
+    metricId: string;
     caps: { rank: number; capScore: number }[];
 }
 
 export const BASELINE_CAPPING_RULES: BaselineCapRule[] = [
     {
-        biomarkerName: "Haemoglobin A1C (HbA1C)",
+        metricId: METRIC_IDS.HBA1C,
         caps: [
             { rank: 1, capScore: 65 },
             { rank: 2, capScore: 75 },
@@ -13,103 +15,104 @@ export const BASELINE_CAPPING_RULES: BaselineCapRule[] = [
         ]
     },
     {
-        biomarkerName: "Fasting Insulin",
+        metricId: METRIC_IDS.FASTING_INSULIN,
         caps: [
             { rank: 1, capScore: 65 },
             { rank: 2, capScore: 75 }
         ]
     },
     {
-        biomarkerName: "Body Fat %",
+        metricId: METRIC_IDS.BODY_FAT,
         caps: [
             { rank: 1, capScore: 70 },
             { rank: 2, capScore: 80 }
         ]
     },
     {
-        biomarkerName: "VO2 Max",
+        metricId: METRIC_IDS.VO2_MAX,
         caps: [
             { rank: 1, capScore: 70 },
             { rank: 2, capScore: 80 }
         ]
     },
     {
-        biomarkerName: "Non-HDL Cholesterol",
+        metricId: METRIC_IDS.NON_HDL,
         caps: [
             { rank: 1, capScore: 70 },
             { rank: 2, capScore: 80 }
         ]
     },
     {
-        biomarkerName: "Lipoprotein A [LP(A)]",
+        metricId: METRIC_IDS.LPA,
         caps: [
             { rank: 1, capScore: 75 }
         ]
     },
     {
-        biomarkerName: "High Sensitivity C-Reactive Protein (hs-CRP)",
+        metricId: METRIC_IDS.HS_CRP,
         caps: [
             { rank: 1, capScore: 70 },
             { rank: 2, capScore: 80 }
         ]
     },
     {
-        biomarkerName: "Gamma-Glutamyl Transferase (GGT)",
+        metricId: METRIC_IDS.GGT,
         caps: [
             { rank: 1, capScore: 70 },
             { rank: 2, capScore: 80 }
         ]
     },
     {
-        biomarkerName: "Thyroid Stimulating Hormone (TSH)",
+        metricId: METRIC_IDS.TSH,
         caps: [
             { rank: 1, capScore: 70 },
             { rank: 2, capScore: 80 }
         ]
     },
     {
-        biomarkerName: "Vitamin B12 (Cobalamin)",
+        metricId: METRIC_IDS.VITAMIN_B12,
         caps: [
             { rank: 1, capScore: 70 },
             { rank: 2, capScore: 80 }
         ]
     },
     {
-        biomarkerName: "Ferritin",
+        metricId: METRIC_IDS.FERRITIN,
         caps: [
             { rank: 1, capScore: 75 }
         ]
     },
     {
-        biomarkerName: "PHQ-2",
+        metricId: METRIC_IDS.PHQ_2,
         caps: [
             { rank: 1, capScore: 65 },
             { rank: 2, capScore: 75 }
         ]
     },
     {
-        biomarkerName: "GAD-2",
+        metricId: METRIC_IDS.GAD_2,
         caps: [
             { rank: 1, capScore: 65 },
             { rank: 2, capScore: 75 }
         ]
     },
     {
-        biomarkerName: "Vitamin D",
+        metricId: METRIC_IDS.VITAMIN_D,
         caps: [
             { rank: 1, capScore: 65 },
             { rank: 2, capScore: 75 }
         ]
     },
+
     {
-        biomarkerName: "Aspartate Aminotransferase (SGOT)",
+        metricId: METRIC_IDS.SGOT,
         caps: [
             { rank: 1, capScore: 60 },
             { rank: 2, capScore: 65 }
         ]
     },
     {
-        biomarkerName: "Alanine Transaminase (SGPT)",
+        metricId: METRIC_IDS.SGPT,
         caps: [
             { rank: 1, capScore: 60 },
             { rank: 2, capScore: 65 }

@@ -1,6 +1,9 @@
 import { TIER_DATA, type TieredBiomarker } from '../data/tierData';
 import type { BloodBiomarker } from '../services/api';
 import { BASELINE_CAPPING_RULES } from '../data/baselineCappingRules';
+import { METRIC_IDS } from '../data/biomarkerIds';
+import { CONTEXT_RULES } from '../data/contextRules';
+import { CAPPING_RULES } from '../data/cappingRules';
 
 /**
  * Determines the rating rank for a given biomarker value.
@@ -30,12 +33,45 @@ export function getBMIRank(value: number | string | undefined): number | null {
 }
 
 /**
+ * Get rating rank for a given NLR (Neutrophil-to-Lymphocyte Ratio) value.
+ *
+ * NLR = NEUTROPHILS / LYMPHOCYTES
+ *
+ * Ranges (checked in order of specificity):
+ * - NLR > 3.5: rank 1
+ * - NLR 2.01 to 3.5: rank 2
+ * - NLR 1.25 to 2.0: rank 3
+ * - NLR 0.76 to 1.24: rank 4
+ * - NLR 0.7 to 0.75: rank 5
+ * - NLR 0.5 to 0.69: rank 2
+ * - NLR < 0.5: rank 1
+ */
+export function getNlrRank(nlrValue: number | string | undefined | null): number {
+    if (nlrValue === null || nlrValue === undefined || nlrValue === '') return 0;
+
+    const nlr = typeof nlrValue === 'string' ? parseFloat(nlrValue) : nlrValue;
+    if (isNaN(nlr)) return 0;
+
+    // Check ranges in order of specificity (most specific first)
+    if (nlr > 3.5) return 1;
+    if (nlr >= 2.01) return 2;
+    if (nlr >= 1.25) return 3;
+    if (nlr >= 0.76) return 4;
+    if (nlr >= 0.70) return 5;
+    if (nlr >= 0.5) return 2;
+    if (nlr < 0.5) return 1;
+
+    return 0;
+}
+
+/**
  * Audit log for a single biomarker calculation.
  */
 export interface BiomarkerAudit {
     name: string;
+    metricId?: string;
     tier?: string; // Added to track which tier the marker belongs to
-    apiNameUsed: string | null;
+    apiNameUsed: string | null; // For display purposes
     originalRank: number | null;
     cappedRank: number | null;
     maxRank: number;
@@ -50,49 +86,63 @@ export interface BiomarkerAudit {
 
 /**
  * Calculates the rating rank for a tiered biomarker.
- * Handles primary names, related names, substitutes, and combined (lowest) logic.
+ * Handles primary names, related names, substitutes, and combined (lowest) logic based on Metric IDs.
  * Returns null if the biomarker is missing from the API.
  */
 export function calculateTierRank(tierItem: TieredBiomarker, bloodData: BloodBiomarker[], bmi: number | null = null): { rank: number | null, audit: Partial<BiomarkerAudit> } {
     const audit: Partial<BiomarkerAudit> = {
         name: tierItem.name,
+        metricId: tierItem.metric_id,
         isMissing: true,
         isSubstitute: false
     };
 
-    // 1. FIRST check whether the primary marker name exists and has a value
-    const primaryBiomarker = bloodData.find(bm => bm.display_name === tierItem.name);
-    if (primaryBiomarker && primaryBiomarker.value !== null && primaryBiomarker.value !== undefined) {
-        audit.apiNameUsed = primaryBiomarker.display_name;
-        audit.isMissing = false;
-        return { rank: getRatingRank(primaryBiomarker), audit };
+    // 1. FIRST check whether the primary marker exists (by ID preferably, fallback to name)
+    let primaryBiomarker: BloodBiomarker | undefined;
+    if (tierItem.metric_id) {
+        primaryBiomarker = bloodData.find(bm => bm.metric_id === tierItem.metric_id);
+    }
+    // Fallback? If ID not found or missing from data, try name?
+    // User requested ID usage. Let's stick to ID if available, but for robustness check name if ID didn't match.
+    if (!primaryBiomarker) {
+        primaryBiomarker = bloodData.find(bm => bm.display_name === tierItem.name);
     }
 
-    // 2. If the name is NOT available, check the relatedNames
-    if (!tierItem.relatedNames || tierItem.relatedNames.length === 0) {
-        return { rank: null, audit };
+    if (primaryBiomarker && primaryBiomarker.value !== null && primaryBiomarker.value !== undefined) {
+        // Special Case: WBC (NLR Calculation needs to be compared, so don't return early)
+        if (tierItem.metric_id !== METRIC_IDS.WBC) {
+            audit.apiNameUsed = primaryBiomarker.display_name;
+            audit.isMissing = false;
+            return { rank: getRatingRank(primaryBiomarker), audit };
+        }
     }
+
+    // 2. If the primary is NOT available, check the relatedMetricIds
+    if (!tierItem.relatedMetricIds || tierItem.relatedMetricIds.length === 0) {
+        // Fallback to relatedNames if metric IDs are missing (legacy support)
+        if (!tierItem.relatedNames || tierItem.relatedNames.length === 0) {
+            return { rank: null, audit };
+        }
+    }
+
+    const relatedIds = tierItem.relatedMetricIds || [];
+    // Also consider relatedNames if needed, but prioritize IDs.
 
     if (tierItem.rule === 'substitute') {
         audit.ruleApplied = 'substitute';
-        // Return rank from first available related name
-        for (const name of tierItem.relatedNames) {
+        // Return rank from first available related ID
+        for (const id of relatedIds) {
             // Special Case: BMI fallback logic
-            if (name === "Body Mass Index (BMI)") {
-                // If BMI is provided nicely from PII data, use it.
-                // Otherwise fall back to a safe default or treat as missing?
-                // For now, let's keep the user's previously requested hardcoded value as a backup if null?
-                // The user request "use that calculated BMI here" implies we should use the passed value.
+            if (id === METRIC_IDS.BMI) {
                 if (bmi !== null) {
-                    audit.apiNameUsed = name;
+                    audit.apiNameUsed = "Body Mass Index (BMI)";
                     audit.isMissing = false;
                     audit.isSubstitute = true;
                     audit.substituteValue = bmi;
                     return { rank: getBMIRank(bmi), audit };
                 } else {
                     // Fallback to hardcoded value if dynamic BMI is not available
-                    // This ensures the dashboard doesn't show "Missing" when testing without user selection
-                    audit.apiNameUsed = name;
+                    audit.apiNameUsed = "Body Mass Index (BMI)";
                     audit.isMissing = false;
                     audit.isSubstitute = true;
                     audit.substituteValue = 24.06;
@@ -100,7 +150,7 @@ export function calculateTierRank(tierItem: TieredBiomarker, bloodData: BloodBio
                 }
             }
 
-            const biomarker = bloodData.find(bm => bm.display_name === name);
+            const biomarker = bloodData.find(bm => bm.metric_id === id);
             if (biomarker && biomarker.value !== null && biomarker.value !== undefined) {
                 audit.apiNameUsed = biomarker.display_name;
                 audit.isMissing = false;
@@ -113,9 +163,57 @@ export function calculateTierRank(tierItem: TieredBiomarker, bloodData: BloodBio
 
     if (tierItem.rule === 'lowest') {
         audit.ruleApplied = 'lowest';
-        // Collect all available ranks from relatedNames and return the lowest
-        const availableBiomarkers = tierItem.relatedNames
-            .map(name => bloodData.find(bm => bm.display_name === name))
+
+        // Special Case: WBC (NLR Calculation)
+        if (tierItem.metric_id === METRIC_IDS.WBC) {
+            let primaryRank: number | null = null;
+            if (primaryBiomarker && primaryBiomarker.value !== null && primaryBiomarker.value !== undefined) {
+                primaryRank = getRatingRank(primaryBiomarker);
+            }
+
+            const neutrophils = bloodData.find(bm => bm.metric_id === METRIC_IDS.NEUTROPHILS);
+            const lymphocytes = bloodData.find(bm => bm.metric_id === METRIC_IDS.LYMPHOCYTES);
+
+            let nlrRank: number | null = null;
+            let nlrValue: number | null = null;
+
+            if (neutrophils && lymphocytes &&
+                neutrophils.value !== null && neutrophils.value !== undefined &&
+                lymphocytes.value !== null && lymphocytes.value !== undefined &&
+                parseFloat(String(lymphocytes.value)) > 0) {
+
+                nlrValue = parseFloat(String(neutrophils.value)) / parseFloat(String(lymphocytes.value));
+                nlrRank = getNlrRank(nlrValue);
+            }
+
+            if (primaryRank !== null || nlrRank !== null) {
+                audit.isMissing = false;
+
+                if (primaryRank !== null && nlrRank !== null) {
+                    const finalRank = Math.min(primaryRank, nlrRank);
+                    audit.apiNameUsed = primaryBiomarker?.display_name || tierItem.name;
+                    audit.ruleApplied = `lowest (WBC: ${primaryRank}, NLR: ${nlrRank})`;
+                    if (nlrRank < primaryRank) {
+                        audit.apiNameUsed = "Neutrophil-to-Lymphocyte Ratio (NLR)";
+                        audit.isSubstitute = true;
+                        audit.substituteValue = nlrValue?.toFixed(2);
+                    }
+                    return { rank: finalRank, audit };
+                } else if (primaryRank !== null) {
+                    audit.apiNameUsed = primaryBiomarker?.display_name || tierItem.name;
+                    return { rank: primaryRank, audit };
+                } else {
+                    audit.apiNameUsed = "Neutrophil-to-Lymphocyte Ratio (NLR)";
+                    audit.isSubstitute = true;
+                    audit.substituteValue = nlrValue?.toFixed(2);
+                    return { rank: nlrRank, audit };
+                }
+            }
+        }
+
+        // Collect all available ranks from relatedIds/names and return the lowest
+        const availableBiomarkers = relatedIds
+            .map(id => bloodData.find(bm => bm.metric_id === id))
             .filter((bm): bm is BloodBiomarker => bm !== undefined && bm.value !== null && bm.value !== undefined);
 
         if (availableBiomarkers.length > 0) {
@@ -143,7 +241,7 @@ export function calculateTierRank(tierItem: TieredBiomarker, bloodData: BloodBio
  */
 export function getMaxRatingRank(biomarker: BloodBiomarker): number {
     if (!biomarker.ranges || biomarker.ranges.length === 0) {
-        return 5; // Default max rank
+        return 0; // Default max rank
     }
 
     const ranks = biomarker.ranges.map(r => r.rating_rank).filter((r): r is number => r !== null && r !== undefined);
@@ -154,12 +252,12 @@ export function getMaxRatingRank(biomarker: BloodBiomarker): number {
  * Calculates the maximum possible rating rank for a tiered biomarker.
  */
 export function calculateMaxTierRank(tierItem: TieredBiomarker, bloodData: BloodBiomarker[]): number {
-    const namesToSearch = [tierItem.name, ...(tierItem.relatedNames || [])];
+    const idsToSearch = [tierItem.metric_id, ...(tierItem.relatedMetricIds || [])].filter((id): id is string => !!id);
 
-    // For all rule types, get the max rank from any of the related biomarkers
-    const maxRanks = namesToSearch
-        .map(name => {
-            const biomarker = bloodData.find(bm => bm.display_name === name);
+    // For all rule types, get the max rank from any of the related biomarkers based on ID
+    const maxRanks = idsToSearch
+        .map(id => {
+            const biomarker = bloodData.find(bm => bm.metric_id === id);
             return biomarker ? getMaxRatingRank(biomarker) : 5;
         })
         .filter((r): r is number => r !== null);
@@ -167,13 +265,13 @@ export function calculateMaxTierRank(tierItem: TieredBiomarker, bloodData: Blood
     return maxRanks.length > 0 ? Math.max(...maxRanks) : 5;
 }
 
-import { CONTEXT_RULES } from '../data/contextRules';
-import { CAPPING_RULES } from '../data/cappingRules';
 
 /**
  * Evaluates all context rules and returns actions for specific biomarker names.
  * Biomarkers are NOT suppressed if they are simply missing from the API.
  * They are only suppressed based on the explicit rules in contextRules.ts.
+ * 
+ * @param currentRanks - Map of Metric ID -> Rank
  */
 export function applyContextRules(
     currentRanks: Record<string, number | null>
@@ -181,15 +279,10 @@ export function applyContextRules(
     const results: Record<string, { action: 'suppress' | 'cap'; capValue?: number; ruleTitle?: string }> = {};
 
     CONTEXT_RULES.forEach(rule => {
-        const mainName = rule.mainBiomarkerName;
-
-        // Missing data is now treated as rank 3 in currentRanks by the caller (calculateTierRank)
-        // If the evaluate logic needs to check for presence, we could pass that info,
-        // but the user says "if any not available save this data as locally (3 point)".
-
+        const mainId = rule.mainMetricId;
         const result = rule.evaluate(currentRanks);
         if (result.action !== 'none') {
-            results[mainName] = {
+            results[mainId] = {
                 action: result.action as 'suppress' | 'cap',
                 capValue: result.capValue,
                 ruleTitle: rule.ruleTitle
@@ -203,6 +296,8 @@ export function applyContextRules(
 /**
  * Evaluates all capping rules and returns actions for specific biomarker names.
  * Biomarkers are NOT suppressed if they are simply missing from the API.
+ * 
+ * @param currentRanks - Map of Metric ID -> Rank
  */
 export function applyCappingRules(
     currentRanks: Record<string, number | null>
@@ -210,11 +305,10 @@ export function applyCappingRules(
     const results: Record<string, { action: 'suppress' | 'cap'; capValue?: number; ruleTitle?: string }> = {};
 
     CAPPING_RULES.forEach(rule => {
-        const mainName = rule.mainBiomarkerName;
-
+        const mainId = rule.mainMetricId;
         const result = rule.evaluate(currentRanks);
         if (result.action !== 'none') {
-            results[mainName] = {
+            results[mainId] = {
                 action: result.action as 'suppress' | 'cap',
                 capValue: result.capValue,
                 ruleTitle: rule.ruleTitle
@@ -228,20 +322,18 @@ export function applyCappingRules(
 /**
  * Calculates the final score for a biomarker based on its capped rank.
  * Formula: final_score = (capped_rank / max_rank) × target_score
- * 
- * @param cappedRank - The final rank after applying context and capping rules
- * @param maxRank - The maximum possible rank (typically 5)
- * @param targetScore - The target score from TIER_DATA (e.g., 60 for HbA1c)
- * @returns The calculated final score (rounded to nearest integer)
  */
 export function calculateFinalScore(
     cappedRank: number,
     maxRank: number,
     targetScore: number
 ): number {
-    // Use the provided maxRank, defaulting to 5 if something goes wrong (though caller should provide it)
-    const divisor = maxRank > 0 ? maxRank : 5;
-    return Math.round((cappedRank / divisor) * targetScore);
+    const divisor = 5;
+    const result = (cappedRank / divisor) * targetScore;
+    if (import.meta.env.MODE === 'development' && result === targetScore && cappedRank < maxRank) {
+        console.warn(`Suspicious Score Calc: Rank ${cappedRank}/${maxRank} * ${targetScore} = ${result}`);
+    }
+    return result;
 }
 
 /**
@@ -279,9 +371,6 @@ export interface BaselineScoreResult {
 
 /**
  * Calculate original tier totals from TIER_DATA.
- * This represents the maximum achievable score for each tier.
- * 
- * @returns Object with tier totals { A, B, C }
  */
 export function calculateOriginalTierTotals(): TierTotals {
     const totals: TierTotals = { A: 0, B: 0, C: 0 };
@@ -298,22 +387,14 @@ export function calculateOriginalTierTotals(): TierTotals {
 
 /**
  * Normalize a tier score to the original tier total.
- * Formula: (finalAchievedScore / finalTierTotalScore) × originalTierTotalScore
- * 
- * @param finalAchievedScore - Sum of calculated final scores
- * @param finalTierTotalScore - Sum of target scores for available markers
- * @param originalTierTotalScore - Original tier total from TIER_DATA
- * @returns Normalized score
  */
 export function normalizeTierScore(
     finalAchievedScore: number,
     finalTierTotalScore: number,
     originalTierTotalScore: number
 ): number {
-    // Handle edge case: no available markers in tier
     if (finalTierTotalScore === 0) return 0;
-
-    return Math.round((finalAchievedScore / finalTierTotalScore) * originalTierTotalScore);
+    return (finalAchievedScore / finalTierTotalScore) * originalTierTotalScore;
 }
 
 export interface BaselineCappingResult {
@@ -333,21 +414,27 @@ export function getBaselineCappingResult(bloodData: BloodBiomarker[], tierData: 
 
     BASELINE_CAPPING_RULES.forEach(rule => {
         let rank: number | null = null;
+        // Use ID for audit name initially? Or Human Name?
+        // Let's use ID for lookup, but try to find name for display.
+        const ruleId = rule.metricId;
+
         let auditData: Partial<BiomarkerAudit> = {
-            name: rule.biomarkerName,
+            name: rule.metricId, // Initialize with ID
             isMissing: true
         };
 
         // 1. Check if it's a tiered biomarker to handle complex rules (like Body Fat % substitution)
-        const tieredItem = tierData.find(item => item.name === rule.biomarkerName);
+        const tieredItem = tierData.find(item => item.metric_id === ruleId);
         if (tieredItem) {
+            auditData.name = tieredItem.name; // Update to human readable name
             const { rank: tierRank, audit: tierAudit } = calculateTierRank(tieredItem, bloodData, bmi);
             rank = tierRank;
             auditData = { ...auditData, ...tierAudit };
         } else {
             // 2. Otherwise look it up directly in bloodData
-            const biomarker = bloodData.find(bm => bm.display_name === rule.biomarkerName);
+            const biomarker = bloodData.find(bm => bm.metric_id === ruleId);
             if (biomarker) {
+                auditData.name = biomarker.display_name;
                 rank = getRatingRank(biomarker);
                 auditData.apiNameUsed = biomarker.display_name;
                 auditData.isMissing = false;
@@ -355,19 +442,24 @@ export function getBaselineCappingResult(bloodData: BloodBiomarker[], tierData: 
         }
 
         const audit: BiomarkerAudit = {
-            name: rule.biomarkerName,
+            name: auditData.name || ruleId,
+            metricId: ruleId,
             apiNameUsed: auditData.apiNameUsed || null,
             originalRank: rank,
             cappedRank: rank,
-            maxRank: 5, // Default for non-tiered if we don't have better info
-            targetScore: 0,
+            maxRank: 5, // Default max rank
+            targetScore: tieredItem ? tieredItem.targetScore : 0, // Include target score
             finalScore: 0,
             ruleApplied: auditData.ruleApplied || null,
             isMissing: auditData.isMissing ?? true,
             isSubstitute: auditData.isSubstitute ?? false,
-            substituteValue: auditData.substituteValue
+            substituteValue: auditData.substituteValue,
+            tier: tieredItem?.tier
         };
 
+        if (import.meta.env.MODE === 'development') {
+            console.log(`Checking Rule: ${auditData.name} (${ruleId}) | Rank: ${rank}`);
+        }
         cappingAudits.push(audit);
 
         if (rank !== null) {
@@ -376,8 +468,10 @@ export function getBaselineCappingResult(bloodData: BloodBiomarker[], tierData: 
                 if (lowestCap === null || applicableCap.capScore < lowestCap) {
                     lowestCap = applicableCap.capScore;
                 }
+                // Try to find a human readable name if possible, otherwise ID
+                const display = audit.name;
                 appliedRules.push({
-                    biomarkerName: rule.biomarkerName,
+                    biomarkerName: display,
                     rank: rank,
                     capScore: applicableCap.capScore
                 });
