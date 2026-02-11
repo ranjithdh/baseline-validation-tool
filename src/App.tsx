@@ -19,6 +19,18 @@ function App() {
     const token = localStorage.getItem('access_token');
     if (token) {
       setIsAuthenticated(true);
+
+      // Restore selected user if exists
+      const savedUser = localStorage.getItem('selected_user');
+      if (savedUser) {
+        try {
+          const user = JSON.parse(savedUser);
+          handleUserSelect(user);
+        } catch (e) {
+          console.error('Failed to parse saved user:', e);
+          localStorage.removeItem('selected_user');
+        }
+      }
     }
   }, []);
 
@@ -59,6 +71,7 @@ function App() {
     try {
       setLoading(true);
       setSelectedUser(user); // Track selected user
+      localStorage.setItem('selected_user', JSON.stringify(user));
 
       // Fetch health data and PII data in parallel
       const [healthDataResult, piiDataResult] = await Promise.all([
@@ -109,6 +122,7 @@ function App() {
         <button
           onClick={() => {
             localStorage.removeItem('access_token');
+            localStorage.removeItem('selected_user');
             setIsAuthenticated(false);
             setHealthData(null);
             setPiiData(null);

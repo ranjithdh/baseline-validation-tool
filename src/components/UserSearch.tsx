@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { userService, type User } from '../services/userService';
 
 interface UserSearchProps {
@@ -10,6 +10,7 @@ const UserSearch: React.FC<UserSearchProps> = ({ onUserSelect }) => {
     const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
+    const searchRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const loadUsers = async () => {
@@ -31,6 +32,19 @@ const UserSearch: React.FC<UserSearchProps> = ({ onUserSelect }) => {
     const [showDropdown, setShowDropdown] = useState(false);
 
     useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+                setShowDropdown(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+
+    useEffect(() => {
         if (!searchTerm) {
             setFilteredUsers([]);
             setShowDropdown(false);
@@ -39,11 +53,13 @@ const UserSearch: React.FC<UserSearchProps> = ({ onUserSelect }) => {
             const filtered = users.filter(user => {
                 const name = (user.name || '').toLowerCase();
                 const userId = (user.user_id || '').toLowerCase();
+                const internalId = (user.id || '').toLowerCase();
                 const email = (user.email || '').toLowerCase();
                 const mobile = (user.mobile || '').toLowerCase();
 
                 return name.includes(lowerTerm) ||
                     userId.includes(lowerTerm) ||
+                    internalId.includes(lowerTerm) ||
                     email.includes(lowerTerm) ||
                     mobile.includes(lowerTerm);
             });
@@ -79,7 +95,7 @@ const UserSearch: React.FC<UserSearchProps> = ({ onUserSelect }) => {
     console.log('UserSearch render:', { loading, usersCount: users.length, filteredCount: filteredUsers.length });
 
     return (
-        <div style={{ marginBottom: '2rem', padding: '1.5rem', background: '#111', borderRadius: '12px', border: '1px solid #333', position: 'relative', zIndex: 100 }}>
+        <div ref={searchRef} style={{ marginBottom: '2rem', padding: '1.5rem', background: '#111', borderRadius: '12px', border: '1px solid #333', position: 'relative', zIndex: 100 }}>
             <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.25rem' }}>Search Users</h3>
 
             <div style={{ position: 'relative' }}>
@@ -143,8 +159,11 @@ const UserSearch: React.FC<UserSearchProps> = ({ onUserSelect }) => {
                                 >
                                     <div>
                                         <div style={{ fontWeight: 'bold', color: '#fff' }}>{user.name || 'Unknown Name'}</div>
-                                        <div style={{ fontSize: '0.875rem', color: '#888' }}>
-                                            <span style={{ marginRight: '1rem' }}>ID: {user.user_id.substring(0, 8)}...</span>
+                                        <div style={{ fontSize: '0.8125rem', color: '#888', marginTop: '0.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem' }}>
+                                            <span style={{ color: '#10b981' }}>User ID: {user.user_id}</span>
+                                            {user.id && user.id !== user.user_id && (
+                                                <span style={{ color: '#6366f1' }}>Internal ID: {user.id}</span>
+                                            )}
                                             <span>{user.email}</span>
                                         </div>
                                     </div>
