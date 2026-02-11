@@ -95,8 +95,11 @@ const UserSearch: React.FC<UserSearchProps> = ({ onUserSelect }) => {
     console.log('UserSearch render:', { loading, usersCount: users.length, filteredCount: filteredUsers.length });
 
     return (
-        <div ref={searchRef} style={{ marginBottom: '2rem', padding: '1.5rem', background: '#111', borderRadius: '12px', border: '1px solid #333', position: 'relative', zIndex: 100 }}>
-            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.25rem' }}>Search Users</h3>
+        <div ref={searchRef} className="card" style={{ position: 'relative', zIndex: 100, border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)', marginBottom: 'var(--space-md)' }}>
+                <div style={{ fontSize: '1.25rem', opacity: 0.8 }}>🔍</div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Search</h3>
+            </div>
 
             <div style={{ position: 'relative' }}>
                 <input
@@ -104,15 +107,18 @@ const UserSearch: React.FC<UserSearchProps> = ({ onUserSelect }) => {
                     placeholder="Search by Name, User ID, or Email..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
+                    onFocus={() => { if (filteredUsers.length > 0) setShowDropdown(true); }}
                     style={{
                         width: '100%',
-                        padding: '0.75rem',
-                        background: '#000',
-                        border: '1px solid #333',
-                        borderRadius: '8px',
+                        padding: '1rem 1.25rem',
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '12px',
                         color: 'white',
                         fontSize: '1rem',
                         outline: 'none',
+                        transition: 'all 0.2s ease',
+                        boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)'
                     }}
                 />
 
@@ -122,14 +128,16 @@ const UserSearch: React.FC<UserSearchProps> = ({ onUserSelect }) => {
                         top: '100%',
                         left: 0,
                         right: 0,
-                        marginTop: '0.5rem',
-                        background: '#1a1a1a',
-                        border: '1px solid #333',
-                        borderRadius: '8px',
-                        maxHeight: '300px',
+                        marginTop: '0.75rem',
+                        background: 'var(--bg-card)',
+                        backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '16px',
+                        maxHeight: '400px',
                         overflowY: 'auto',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-                        zIndex: 1000
+                        boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
+                        zIndex: 1000,
+                        padding: '0.5rem'
                     }}>
                         {loading ? (
                             <div style={{ padding: '1rem', color: '#888', textAlign: 'center' }}>Loading users...</div>
@@ -140,14 +148,16 @@ const UserSearch: React.FC<UserSearchProps> = ({ onUserSelect }) => {
                                 <div
                                     key={user.user_id}
                                     style={{
-                                        padding: '1rem',
-                                        borderBottom: '1px solid #333',
+                                        padding: '1rem 1.25rem',
+                                        borderRadius: '10px',
                                         display: 'flex',
                                         justifyContent: 'space-between',
                                         alignItems: 'center',
                                         cursor: 'pointer',
+                                        transition: 'background 0.2s ease',
+                                        marginBottom: '2px'
                                     }}
-                                    onMouseOver={(e) => e.currentTarget.style.background = '#2a2a2a'}
+                                    onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
                                     onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                                     onClick={() => {
                                         setSearchTerm(''); // Clear search to close dropdown
@@ -157,17 +167,28 @@ const UserSearch: React.FC<UserSearchProps> = ({ onUserSelect }) => {
                                         }
                                     }}
                                 >
-                                    <div>
-                                        <div style={{ fontWeight: 'bold', color: '#fff' }}>{user.name || 'Unknown Name'}</div>
-                                        <div style={{ fontSize: '0.8125rem', color: '#888', marginTop: '0.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem' }}>
-                                            <span style={{ color: '#10b981' }}>User ID: {user.user_id}</span>
-                                            {user.id && user.id !== user.user_id && (
-                                                <span style={{ color: '#6366f1' }}>Internal ID: {user.id}</span>
-                                            )}
-                                            <span>{user.email}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                        <div style={{
+                                            width: '40px',
+                                            height: '40px',
+                                            borderRadius: '50%',
+                                            background: 'rgba(255,255,255,0.05)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '1.2rem'
+                                        }}>
+                                            👤
+                                        </div>
+                                        <div>
+                                            <div style={{ fontWeight: 600, color: '#fff', fontSize: '1rem' }}>{user.name || 'Unknown Name'}</div>
+                                            <div style={{ fontSize: '0.75rem', marginTop: '4px', display: 'flex', gap: '0.75rem' }} className="text-secondary">
+                                                <span style={{ color: 'var(--primary)' }}>ID: {user.id}</span>
+                                                <span>{user.email}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div style={{ fontSize: '0.875rem', color: '#888' }}>{user.mobile}</div>
+                                    <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{user.mobile}</div>
                                 </div>
                             ))
                         )}

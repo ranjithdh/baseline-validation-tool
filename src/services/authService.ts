@@ -1,4 +1,8 @@
-const BASE_URL = 'https://api.stg.dh.deepholistics.com/v4/human-token';
+
+
+const BASE_URL = 'https://api.dh.deepholistics.com/v4/human-token';
+
+
 
 interface SendOtpResponse {
     status: string;
@@ -25,7 +29,7 @@ interface VerifyOtpResponse {
 
 const HEADERS = {
     'Content-Type': 'application/json',
-    'client_id': 'qXsGPcHJkb9MTwD5fNFpzRrngjtvy4dW',
+    'client_id': '6wkFaU5pxWn4R3C87Z6ceNQgzLJvD2OVKoXB',
     'user_timezone': 'Asia/Calcutta', // Or Intl.DateTimeFormat().resolvedOptions().timeZone
 };
 

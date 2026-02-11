@@ -65,7 +65,20 @@ export const CONTEXT_RULES: ContextRule[] = [
             const fastingInsulin = ranks[METRIC_IDS.FASTING_INSULIN];
             const ppInsulin = ranks[METRIC_IDS.PP_INSULIN];
 
+            if (import.meta.env.MODE === 'development') {
+                console.log('DEBUG HbA1c Rule:', {
+                    hba1c,
+                    fastingInsulin,
+                    ppInsulin,
+                    condition1: hba1c !== null && hba1c >= 4,
+                    condition2: (fastingInsulin !== null && fastingInsulin <= 2),
+                    condition3: (ppInsulin !== null && ppInsulin <= 2)
+                });
+            }
+
             // HbA1c >= 4 AND (Fasting Insulin <= 2 OR PP Insulin <= 2) → Cap at 3
+            // 5 >= 4 AND (3 <= 2 OR 2 <= 2) → Cap at 3
+
             if (
                 hba1c !== null && hba1c >= 4 &&
                 ((fastingInsulin !== null && fastingInsulin <= 2) ||
@@ -278,6 +291,8 @@ export const CONTEXT_RULES: ContextRule[] = [
             const sgpt = ranks[METRIC_IDS.SGPT];
 
             // GGT >= 3 AND (SGOT <= 2 OR SGPT <= 2) → Cap at 3
+            // 4 >= 3 AND (2 <= 2 OR 3 <= 2) → Cap at 3
+
             if (
                 ggt !== null && ggt >= 3 &&
                 ((sgot !== null && sgot <= 2) || (sgpt !== null && sgpt <= 2))

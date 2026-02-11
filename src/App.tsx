@@ -31,6 +31,9 @@ function App() {
           localStorage.removeItem('selected_user');
         }
       }
+    } else if (import.meta.env.MODE === 'development') {
+      // Auto-login for development
+      setIsAuthenticated(true);
     }
   }, []);
 
@@ -47,7 +50,18 @@ function App() {
       const data = await fetchHealthData();
       setHealthData(data);
       setError(null);
-      setSelectedUser(null); // Clear selected user for default data
+      // Create a default user object for display purposes
+      const defaultUser: User = {
+        id: 'default',
+        user_id: 'default-user',
+        name: 'Default User',
+        email: 'default@example.com',
+        mobile: '',
+        gender: '',
+        dob: '',
+        lead_id: ''
+      };
+      setSelectedUser(defaultUser);
       setPiiData(null);
       setBmi(null);
     } catch (err: any) {
@@ -115,66 +129,92 @@ function App() {
   }
 
   return (
-    <div className="container" style={{ padding: 'var(--spacing-xl)', maxWidth: '1200px', margin: '0 auto' }}>
-      <header style={{ marginBottom: 'var(--spacing-xl)' }}>
-        <h1 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, margin: 0 }}>Baseline Score Validation Tool</h1>
-        <p className="text-secondary">Verify and validate the baseline score calculation logic.</p>
-        <button
-          onClick={() => {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('selected_user');
-            setIsAuthenticated(false);
-            setHealthData(null);
-            setPiiData(null);
-            setBmi(null);
-          }}
-          className="btn"
-          style={{ marginTop: '1rem', background: '#334155' }}
-        >
-          Logout
-        </button>
+    <div className="container">
+      <header style={{
+        marginBottom: 'var(--space-2xl)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start'
+      }}>
+        <div>
+          <h1 style={{ fontSize: '2rem', color: 'var(--text-primary)', marginBottom: 'var(--space-xs)' }}>
+            Baseline <span style={{ color: 'var(--primary)' }}>Validator</span>
+          </h1>
+          <p className="text-secondary" style={{ fontSize: '1rem' }}>
+            Premium Audit & Validation Engine
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'center' }}>
+          <button
+            onClick={() => {
+              localStorage.removeItem('access_token');
+              localStorage.removeItem('selected_user');
+              setIsAuthenticated(false);
+              setHealthData(null);
+              setPiiData(null);
+              setBmi(null);
+            }}
+            className="btn btn-secondary"
+          >
+            Sign Out
+          </button>
+        </div>
       </header>
 
-      <main>
-        <UserSearch onUserSelect={handleUserSelect} />
+      <main style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
+        <section className="glass" style={{ borderRadius: '20px', padding: 'var(--space-lg)' }}>
+          <UserSearch onUserSelect={handleUserSelect} />
+        </section>
 
         {selectedUser && (
-          <div style={{
-            padding: '1rem 1.5rem',
-            marginBottom: '1.5rem',
-            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%)',
-            border: '1px solid rgba(16, 185, 129, 0.3)',
-            borderRadius: '8px',
+          <div className="card" style={{
+            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%)',
             display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem'
+            flexDirection: 'column',
+            gap: 'var(--space-md)'
           }}>
-            <span style={{ fontSize: '0.9rem', color: '#10b981', fontWeight: 600 }}>📊 Showing data for:</span>
-            <span style={{ fontSize: '1rem', fontWeight: 'bold', color: 'white' }}>{selectedUser.name}</span>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>({selectedUser.user_id})</span>
-            {bmi !== null && (
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                <div style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>
-                  Height: <strong>{piiData?.height} cm</strong>
-                </div>
-                <div style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.8)' }}>
-                  Weight: <strong>{piiData?.weight} kg</strong>
-                </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
                 <div style={{
-                  padding: '4px 8px',
-                  background: 'rgba(255,255,255,0.2)',
-                  borderRadius: '4px',
-                  fontWeight: 'bold',
-                  color: 'white'
+                  width: '48px',
+                  height: '48px',
+                  borderRadius: '12px',
+                  background: 'var(--bg-surface)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.5rem'
                 }}>
-                  BMI: {bmi}
+                  👤
+                </div>
+                <div>
+                  <h2 style={{ fontSize: '1.25rem' }}>{selectedUser.name}</h2>
+                  <div style={{ display: 'flex', gap: 'var(--space-sm)', fontSize: '0.85rem' }} className="text-secondary">
+                    <span>ID: {selectedUser.id}</span>
+                  </div>
                 </div>
               </div>
-            )}
+
+              {bmi !== null && (
+                <div style={{ display: 'flex', gap: 'var(--space-xl)' }}>
+                  <div style={{ textAlign: 'right' }}>
+                    <div className="text-muted" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>BMI Index</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)' }}>{bmi}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div className="text-muted" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Metrics</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>{piiData?.height}cm / {piiData?.weight}kg</div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        <BiomarkerList healthData={healthData} loading={loading} error={error} bmi={bmi} />
+        <section>
+          <BiomarkerList healthData={healthData} loading={loading} error={error} bmi={bmi} />
+        </section>
       </main>
     </div>
   )

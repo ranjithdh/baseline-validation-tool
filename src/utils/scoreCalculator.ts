@@ -82,6 +82,8 @@ export interface BiomarkerAudit {
     isMissing: boolean;
     isSubstitute: boolean;
     substituteValue?: string | number;
+    value?: number | string;
+    unit?: string;
 }
 
 /**
@@ -113,6 +115,8 @@ export function calculateTierRank(tierItem: TieredBiomarker, bloodData: BloodBio
         if (tierItem.metric_id !== METRIC_IDS.WBC) {
             audit.apiNameUsed = primaryBiomarker.display_name;
             audit.isMissing = false;
+            audit.value = primaryBiomarker.value;
+            audit.unit = primaryBiomarker.unit;
             return { rank: getRatingRank(primaryBiomarker), audit };
         }
     }
@@ -145,8 +149,8 @@ export function calculateTierRank(tierItem: TieredBiomarker, bloodData: BloodBio
                     audit.apiNameUsed = "Body Mass Index (BMI)";
                     audit.isMissing = false;
                     audit.isSubstitute = true;
-                    audit.substituteValue = 24.06;
-                    return { rank: getBMIRank(24.06), audit };
+                    audit.substituteValue = 26.5;
+                    return { rank: getBMIRank(26.5), audit };
                 }
             }
 
@@ -155,6 +159,8 @@ export function calculateTierRank(tierItem: TieredBiomarker, bloodData: BloodBio
                 audit.apiNameUsed = biomarker.display_name;
                 audit.isMissing = false;
                 audit.isSubstitute = true;
+                audit.value = biomarker.value;
+                audit.unit = biomarker.unit;
                 return { rank: getRatingRank(biomarker), audit };
             }
         }
@@ -226,6 +232,11 @@ export function calculateTierRank(tierItem: TieredBiomarker, bloodData: BloodBio
                 const lowest = ranksWithNames.reduce((prev, curr) => prev.rank < curr.rank ? prev : curr);
                 audit.apiNameUsed = lowest.name;
                 audit.isMissing = false;
+                const lowestBiomarker = availableBiomarkers.find(bm => bm.display_name === lowest.name);
+                if (lowestBiomarker) {
+                    audit.value = lowestBiomarker.value;
+                    audit.unit = lowestBiomarker.unit;
+                }
                 return { rank: lowest.rank, audit };
             }
         }
@@ -438,6 +449,8 @@ export function getBaselineCappingResult(bloodData: BloodBiomarker[], tierData: 
                 rank = getRatingRank(biomarker);
                 auditData.apiNameUsed = biomarker.display_name;
                 auditData.isMissing = false;
+                auditData.value = biomarker.value;
+                auditData.unit = biomarker.unit;
             }
         }
 
@@ -454,6 +467,8 @@ export function getBaselineCappingResult(bloodData: BloodBiomarker[], tierData: 
             isMissing: auditData.isMissing ?? true,
             isSubstitute: auditData.isSubstitute ?? false,
             substituteValue: auditData.substituteValue,
+            value: auditData.value,
+            unit: auditData.unit,
             tier: tieredItem?.tier
         };
 

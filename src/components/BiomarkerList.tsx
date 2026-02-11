@@ -4,57 +4,47 @@ import { getRatingRank, calculateTierRank, applyContextRules, applyCappingRules,
 import { TIER_DATA } from '../data/tierData';
 import { CalculationAudit } from './CalculationAudit';
 
-const RatingBadge = ({ rating, score, rank, isCapped }: { rating: string; score?: number; rank?: number | null; isCapped?: boolean }) => {
-    const getRatingColor = (r: string) => {
+const RatingBadge = ({ rating, rank, isCapped }: { rating: string; rank?: number | null; isCapped?: boolean }) => {
+    const getRatingInfo = (r: string) => {
         switch (r.toLowerCase()) {
-            case 'optimal': return '#00ff00';
-            case 'normal': return '#0070f3';
-            case 'monitor': return '#ffa500';
+            case 'optimal': return { color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)' };
+            case 'normal': return { color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.1)' };
+            case 'monitor': return { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' };
             case 'high':
             case 'borderline high':
-            case 'needs attention': return '#ff0000';
-            default: return 'var(--text-secondary)';
+            case 'needs attention': return { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' };
+            default: return { color: 'var(--text-muted)', bg: 'rgba(255, 255, 255, 0.05)' };
         }
     };
 
+    const info = getRatingInfo(rating);
+
     return (
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
             <span style={{
                 fontSize: '10px',
-                padding: '2px 6px',
-                borderRadius: '4px',
-                backgroundColor: 'rgba(255,255,255,0.1)',
-                border: `1px solid ${getRatingColor(rating)}`,
-                color: getRatingColor(rating),
+                padding: '2px 8px',
+                borderRadius: '6px',
+                backgroundColor: info.bg,
+                border: `1px solid ${info.color}33`,
+                color: info.color,
                 textTransform: 'uppercase',
-                fontWeight: 'bold'
+                fontWeight: 700,
+                letterSpacing: '0.02em'
             }}>
                 {rating}
             </span>
             {rank !== undefined && rank !== null && (
                 <span style={{
                     fontSize: '10px',
-                    padding: '2px 6px',
-                    borderRadius: '4px',
-                    backgroundColor: isCapped ? 'rgba(255, 0, 0, 0.2)' : 'rgba(255, 165, 0, 0.2)',
-                    color: isCapped ? '#ff4d4d' : '#ffa500',
-                    border: `1px solid ${isCapped ? '#ff4d4d' : '#ffa500'}`,
-                    fontWeight: 'bold'
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    backgroundColor: isCapped ? 'rgba(239, 68, 68, 0.15)' : 'rgba(99, 102, 241, 0.15)',
+                    color: isCapped ? '#f87171' : '#818cf8',
+                    border: `1px solid ${isCapped ? '#ef444455' : '#6366f155'}`,
+                    fontWeight: 700
                 }}>
-                    RANK: {rank} {isCapped && '(CAPPED)'}
-                </span>
-            )}
-            {score !== undefined && (
-                <span style={{
-                    fontSize: '10px',
-                    padding: '2px 6px',
-                    borderRadius: '4px',
-                    backgroundColor: 'rgba(0, 112, 243, 0.2)',
-                    color: '#0070f3',
-                    border: '1px solid #0070f3',
-                    fontWeight: 'bold'
-                }}>
-                    TARGET: {score}
+                    RANK: {rank}
                 </span>
             )}
         </div>
@@ -196,10 +186,34 @@ const BiomarkerList = ({ healthData, loading, error, bmi }: BiomarkerListProps) 
 
         // 1. Calculate Ranks & Populate Map
         const currentRanks: Record<string, number | null> = {};
+
+        // First, populate ranks for ALL available blood data directly
+        bloodData.forEach(bm => {
+            if (bm.metric_id) {
+                const rank = getRatingRank(bm);
+                currentRanks[bm.metric_id] = rank;
+                if (import.meta.env.MODE === 'development') {
+                    // console.log(`Populated Rank for ${bm.display_name} (${bm.metric_id}): ${rank}`);
+                }
+            }
+        });
+
+        // Then, ensure tiered items are also captured (redundant but safe for calculated fields)
         TIER_DATA.forEach(tierItem => {
             const { rank } = calculateTierRank(tierItem, bloodData, bmi);
             if (tierItem.metric_id) {
-                currentRanks[tierItem.metric_id] = rank;
+                // If it's already there from bloodData, this might be a calculated rank (e.g. combined), so we might want to overwrite or prioritize?
+                // Context rules usually expect the "raw" rank of the biomarker.
+                // But calculateTierRank handles logic like "lowest of A and B".
+                // For context rules, we typically want the specific biomarker's rank.
+                // So bloodData loop above is better for raw inputs.
+                // tierItem loop is good for the "Main" rank used for scoring.
+
+                // Let's keep the tier rank as the "official" rank for that ID if it exists, 
+                // but the loop above ensures we have ranks for things that AREN'T main tier items (like constituent parts).
+                if (currentRanks[tierItem.metric_id] === undefined) {
+                    currentRanks[tierItem.metric_id] = rank;
+                }
             }
         });
 
@@ -241,7 +255,11 @@ const BiomarkerList = ({ healthData, loading, error, bmi }: BiomarkerListProps) 
             }
 
             // Priority 2: Capping Rules
-            if (cappingAction?.action === 'cap') {
+            if (cappingAction?.action === 'suppress') {
+                cappedRank = null;
+                ruleApplied = (ruleApplied ? ruleApplied + ' + ' : '') + 'suppress';
+                ruleTitle = cappingAction.ruleTitle;
+            } else if (cappingAction?.action === 'cap') {
                 const capVal = cappingAction.capValue;
                 if (capVal !== undefined && cappedRank !== null && cappedRank > capVal) {
                     cappedRank = capVal;
@@ -387,54 +405,69 @@ const BiomarkerList = ({ healthData, loading, error, bmi }: BiomarkerListProps) 
 
     return (
         <div className="biomarker-explorer">
-            <header className="biomarker-header" style={{ marginBottom: '2rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+            <header style={{ marginBottom: 'var(--space-2xl)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 'var(--space-lg)', flexWrap: 'wrap', gap: 'var(--space-md)' }}>
                     <div>
-                        <h1 style={{ margin: 0, fontSize: '1.5rem', color: 'var(--text-primary)' }}>
-                            {activeTab === 'all' ? 'Staging API Biomarkers' : activeTab === 'tiered' ? 'Tiered Blood Biomarkers' : activeTab === 'finalized' ? 'Finalized Biomarker Scores' : 'Calculation Audit'}
+                        <h1 style={{ fontSize: '1.75rem', color: 'var(--text-primary)', marginBottom: 'var(--space-xs)' }}>
+                            {activeTab === 'all' ? 'Staging API Biomarkers' : activeTab === 'audit' ? 'Validation Audit Trail' : 'Tiered Insights'}
                         </h1>
-                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                            {activeTab === 'all' ? `Showing all ${totalCount} biomarkers.` : activeTab === 'tiered' ? `Showing ${totalCount} tiered biomarkers.` : activeTab === 'finalized' ? `Showing ${totalCount} finalized scores.` : 'Detailed scoring audit trail.'}
+                        <p className="text-secondary" style={{ fontSize: '0.95rem' }}>
+                            {activeTab === 'all' ? `Analyzing ${totalCount} metrics from staging.` : activeTab === 'audit' ? 'In-depth diagnostic trace of all calculation phases.' : 'Grouped analysis of priority biomarkers.'}
                         </p>
                     </div>
 
-                    <div className="tab-navigation" style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '8px' }}>
+                    <div style={{
+                        display: 'flex',
+                        gap: '4px',
+                        background: 'rgba(255,255,255,0.03)',
+                        padding: '4px',
+                        borderRadius: '12px',
+                        border: '1px solid var(--border)'
+                    }}>
                         {(['all', 'audit'] as const).map(tab => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
                                 style={{
-                                    padding: '8px 16px',
+                                    padding: '10px 20px',
                                     border: 'none',
-                                    borderRadius: '6px',
+                                    borderRadius: '8px',
                                     cursor: 'pointer',
-                                    background: activeTab === tab ? 'rgba(255,255,255,0.1)' : 'transparent',
-                                    color: activeTab === tab ? 'white' : 'var(--text-secondary)',
-                                    transition: 'all 0.2s',
-                                    textTransform: 'capitalize'
+                                    background: activeTab === tab ? 'var(--bg-surface)' : 'transparent',
+                                    color: activeTab === tab ? 'white' : 'var(--text-muted)',
+                                    fontWeight: 600,
+                                    fontSize: '0.85rem',
+                                    transition: 'all 0.2s ease',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.05em',
+                                    boxShadow: activeTab === tab ? 'var(--shadow-md)' : 'none'
                                 }}
                             >
-                                {tab === 'audit' ? 'Calculation Audit' : tab}
+                                {tab === 'audit' ? 'Trace Audit' : tab}
                             </button>
                         ))}
                     </div>
                 </div>
 
-                <div className="search-bar">
+                <div style={{ position: 'relative', maxWidth: '600px' }}>
                     <input
                         type="text"
-                        placeholder="Search biomarkers..."
+                        placeholder="Quick filter metrics..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         style={{
                             width: '100%',
-                            background: 'var(--surface-color)',
-                            border: '1px solid var(--border-color)',
+                            background: 'var(--bg-card)',
+                            border: '1px solid var(--border)',
                             color: 'white',
-                            padding: '12px 16px',
-                            borderRadius: '8px',
-                            fontSize: '0.95rem'
+                            padding: '0.875rem 1rem',
+                            borderRadius: '12px',
+                            fontSize: '0.9rem',
+                            outline: 'none',
+                            transition: 'border-color 0.2s',
                         }}
+                        onFocus={(e) => e.target.style.borderColor = 'var(--primary)'}
+                        onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
                     />
                 </div>
             </header>
@@ -445,36 +478,72 @@ const BiomarkerList = ({ healthData, loading, error, bmi }: BiomarkerListProps) 
                 ) : (
                     <>
                         {activeTab === 'finalized' && baselineScore && (
-                            <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
-                                <h2 style={{ margin: '0 0 1.5rem 0', fontSize: '1.25rem' }}>Baseline Score Summary</h2>
+                            <div className="card" style={{
+                                padding: 'var(--space-xl)',
+                                marginBottom: 'var(--space-xl)',
+                                background: 'var(--bg-card)',
+                                border: '1px solid var(--border)'
+                            }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-xl)' }}>
+                                    <div>
+                                        <h2 style={{ fontSize: '1.5rem', marginBottom: 'var(--space-xs)' }}>Baseline Score Summary</h2>
+                                        <p className="text-secondary">Normalized results across tiered biomarker groups.</p>
+                                    </div>
+                                    <div style={{
+                                        textAlign: 'center',
+                                        padding: 'var(--space-md) var(--space-xl)',
+                                        borderRadius: '20px',
+                                        background: baselineScore.isCappedOverall ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                                        border: `2px solid ${baselineScore.isCappedOverall ? 'var(--error)' : 'var(--primary)'}`
+                                    }}>
+                                        <div className="text-muted" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Final Aggregate</div>
+                                        <div style={{ fontSize: '2.5rem', fontWeight: 800, color: baselineScore.isCappedOverall ? 'var(--error)' : 'var(--primary)' }}>
+                                            {((baselineScore.totalBaselineScore / baselineScore.totalOriginalScore) * 100).toFixed(2)}
 
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+                                        </div>
+                                        {baselineScore.isCappedOverall && (
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--error)', fontWeight: 700, marginTop: '4px' }}>
+                                                Capped to {baselineScore.cappingResult.lowestCap}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 'var(--space-md)' }}>
                                     {(['A', 'B', 'C'] as const).map(tier => (
-                                        <div key={tier} style={{ background: 'rgba(255,255,255,0.03)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Tier {tier}</div>
-                                            <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#10b981' }}>
-                                                {baselineScore.normalizedScores[tier].toFixed(2)} / {baselineScore.originalTotals[tier]}
+                                        <div key={tier} className="glass" style={{ padding: 'var(--space-lg)', borderRadius: '16px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-sm)' }}>
+                                                <div className="text-muted" style={{ fontSize: '0.8rem', fontWeight: 700 }}>TIER {tier}</div>
+                                                <div style={{
+                                                    fontSize: '0.7rem',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '20px',
+                                                    background: 'rgba(255,255,255,0.05)',
+                                                    border: '1px solid var(--border)'
+                                                }}>
+                                                    {baselineScore.finalizedScores[tier].total} Pts Total
+                                                </div>
+                                            </div>
+                                            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)' }}>
+                                                {baselineScore.normalizedScores[tier].toFixed(2)}
+                                                <span className="text-muted" style={{ fontSize: '1rem', fontWeight: 400 }}> / {baselineScore.originalTotals[tier]}</span>
+                                            </div>
+                                            <div style={{
+                                                marginTop: 'var(--space-md)',
+                                                height: '6px',
+                                                background: 'rgba(255,255,255,0.05)',
+                                                borderRadius: '3px',
+                                                overflow: 'hidden'
+                                            }}>
+                                                <div style={{
+                                                    height: '100%',
+                                                    width: `${(baselineScore.normalizedScores[tier] / baselineScore.originalTotals[tier]) * 100}%`,
+                                                    background: 'var(--primary)',
+                                                    boxShadow: '0 0 10px var(--primary)'
+                                                }} />
                                             </div>
                                         </div>
                                     ))}
-                                </div>
-
-                                <div style={{
-                                    padding: '1.5rem',
-                                    borderRadius: '12px',
-                                    textAlign: 'center',
-                                    background: baselineScore.isCappedOverall ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
-                                    border: `2px solid ${baselineScore.isCappedOverall ? '#ef4444' : '#10b981'}`
-                                }}>
-                                    <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Final Baseline Score</div>
-                                    <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: baselineScore.isCappedOverall ? '#ef4444' : '#10b981' }}>
-                                        {((baselineScore.totalBaselineScore / baselineScore.totalOriginalScore) * 100).toFixed(1)} / 100
-                                    </div>
-                                    {baselineScore.isCappedOverall && (
-                                        <div style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold', marginTop: '0.5rem' }}>
-                                            Capped to {baselineScore.cappingResult.lowestCap}% by dashboard rules
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         )}
@@ -483,43 +552,82 @@ const BiomarkerList = ({ healthData, loading, error, bmi }: BiomarkerListProps) 
                             {Object.entries(categorizedData).map(([group, biomarkers]) => (
                                 biomarkers.length > 0 && (
                                     <section key={group}>
-                                        <h2 style={{ fontSize: '1.25rem', color: '#10b981', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                                        <h2 style={{
+                                            fontSize: '1rem',
+                                            color: 'var(--primary)',
+                                            marginBottom: 'var(--space-md)',
+                                            paddingBottom: 'var(--space-xs)',
+                                            borderBottom: '2px solid rgba(16, 185, 129, 0.1)',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.05em'
+                                        }}>
                                             {group}
                                         </h2>
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.25rem' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 'var(--space-md)' }}>
                                             {biomarkers.map((bm, idx) => (
-                                                <div key={idx} className="glass-card" style={{ padding: '1.25rem' }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                                                        <div>
-                                                            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 'bold' }}>{bm.display_name}</h3>
-                                                            {bm.isUnavailable && <div style={{ fontSize: '0.7rem', color: '#60a5fa' }}>Locally Saved Fallback</div>}
+                                                <div key={idx} className="card card-interactive" style={{ padding: 'var(--space-lg)' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-md)' }}>
+                                                        <div style={{ flex: 1 }}>
+                                                            <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '2px' }}>{bm.display_name}</h3>
+                                                            {bm.isUnavailable && <div style={{ fontSize: '0.65rem', color: 'var(--secondary)', fontWeight: 700, textTransform: 'uppercase' }}>Fallback Data</div>}
                                                         </div>
                                                         <RatingBadge
                                                             rating={bm.display_rating || 'N/A'}
-                                                            score={bm.tierInfo?.targetScore}
                                                             rank={bm.calculatedRank}
                                                             isCapped={bm.isCapped}
                                                         />
                                                     </div>
 
                                                     {!bm.isUnavailable ? (
-                                                        <div style={{ marginBottom: '1rem' }}>
-                                                            <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
-                                                                {bm.value} <span style={{ fontSize: '0.8rem', fontWeight: 'normal', color: 'var(--text-secondary)' }}>{bm.unit}</span>
+                                                        <div style={{ marginBottom: 'var(--space-md)' }}>
+                                                            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                                                                {bm.value} <span style={{ fontSize: '0.8rem', fontWeight: 400, color: 'var(--text-muted)' }}>{bm.unit}</span>
                                                             </div>
-                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Range: {bm.range}</div>
+                                                            <div style={{ fontSize: '0.75rem', marginTop: '4px' }} className="text-muted">
+                                                                Expected Range: <span style={{ color: 'var(--text-secondary)' }}>{bm.range}</span>
+                                                            </div>
                                                         </div>
                                                     ) : (
-                                                        <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', border: '1px dashed var(--border-color)', fontSize: '0.75rem', textAlign: 'center' }}>
-                                                            Data Missing from API
+                                                        <div style={{
+                                                            marginBottom: 'var(--space-md)',
+                                                            padding: '1rem',
+                                                            background: 'rgba(255,255,255,0.02)',
+                                                            borderRadius: '12px',
+                                                            border: '1px dashed var(--border)',
+                                                            fontSize: '0.75rem',
+                                                            textAlign: 'center',
+                                                            color: 'var(--text-muted)'
+                                                        }}>
+                                                            Metrics not returned by API
                                                         </div>
                                                     )}
 
                                                     {(activeTab === 'finalized' || activeTab === 'audit') && bm.calculatedRank !== null && (
-                                                        <div style={{ padding: '0.75rem', background: 'rgba(16, 185, 129, 0.05)', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.2)', fontSize: '0.75rem' }}>
-                                                            <div style={{ fontWeight: 'bold', color: '#10b981', marginBottom: '0.25rem' }}>CALCULATION:</div>
-                                                            <div>({bm.calculatedRank} / {bm.maxRank}) × {bm.tierInfo?.targetScore} = <strong>{bm.finalScore}</strong></div>
-                                                            {bm.appliedRule && <div style={{ marginTop: '0.5rem', color: bm.isCapped ? '#f59e0b' : '#ef4444', fontStyle: 'italic' }}>Rule: {bm.appliedRule}</div>}
+                                                        <div style={{
+                                                            padding: '0.75rem 1rem',
+                                                            background: 'rgba(16, 185, 129, 0.05)',
+                                                            borderRadius: '10px',
+                                                            border: '1px solid rgba(16, 185, 129, 0.15)',
+                                                            fontSize: '0.75rem'
+                                                        }}>
+                                                            <div style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Calculation</div>
+                                                            <div style={{ color: 'var(--text-secondary)' }}>
+                                                                Rank {bm.calculatedRank}/{bm.maxRank} × {bm.tierInfo?.targetScore} = <strong style={{ color: 'var(--text-primary)' }}>{bm.finalScore}</strong>
+                                                            </div>
+                                                            {bm.appliedRule && (
+                                                                <div style={{
+                                                                    marginTop: 'var(--space-sm)',
+                                                                    paddingTop: 'var(--space-sm)',
+                                                                    borderTop: '1px solid rgba(255,255,255,0.05)',
+                                                                    color: bm.isCapped ? 'var(--warning)' : 'var(--error)',
+                                                                    fontStyle: 'italic',
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px'
+                                                                }}>
+                                                                    <span>⚠️</span> {bm.appliedRule}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
                                                 </div>
