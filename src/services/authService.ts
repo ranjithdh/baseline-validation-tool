@@ -1,6 +1,6 @@
+import { API_BASE_URL, getCommonHeaders } from './config';
 
-
-const BASE_URL = 'https://api.dh.deepholistics.com/v4/human-token';
+const BASE_URL = `${API_BASE_URL}/v4/human-token`;
 
 
 
@@ -27,18 +27,13 @@ interface VerifyOtpResponse {
     };
 }
 
-const HEADERS = {
-    'Content-Type': 'application/json',
-    'client_id': '6wkFaU5pxWn4R3C87Z6ceNQgzLJvD2OVKoXB',
-    'user_timezone': 'Asia/Calcutta', // Or Intl.DateTimeFormat().resolvedOptions().timeZone
-};
 
 export const authService = {
     async sendOtp(mobile: string, countryCode: string = '91'): Promise<string> {
         try {
             const response = await fetch(`${BASE_URL}/lead/send-otp`, {
                 method: 'POST',
-                headers: HEADERS,
+                headers: getCommonHeaders(null),
                 body: JSON.stringify({
                     country_code: countryCode.replace('+', ''), // Handle '+91' -> '91'
                     mobile,
@@ -65,7 +60,7 @@ export const authService = {
         try {
             const response = await fetch(`${BASE_URL}/lead/verify-otp`, {
                 method: 'POST',
-                headers: HEADERS,
+                headers: getCommonHeaders(null),
                 body: JSON.stringify({
                     mh,
                     otp,
