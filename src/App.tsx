@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import './index.css'
-import LoginContainer from './components/mobile-login/LoginContainer'
+import LoginContainer from './components/login/LoginContainer'
 import BiomarkerList from './components/BiomarkerList'
 import UserSearch from './components/UserSearch'
 import { fetchHealthData, fetchUserHealthData, fetchUserPIIData, calculateBMI, type HealthDataResponse, type PIIData } from './services/api'
