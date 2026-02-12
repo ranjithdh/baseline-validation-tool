@@ -1,73 +1,49 @@
-# React + TypeScript + Vite
+# Baseline Validation Tool
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This tool is a specialized engine for auditing and validating health data biomarkers and calculating the complex **Baseline Score**.
 
-Currently, two official plugins are available:
+## 📊 Baseline Score Calculation Logic
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The calculation of the Baseline Score is a multi-phase process that involves biomarker ranking, tiered normalization, and overall score capping.
 
-## React Compiler
+### 1. Biomarker-Level Scoring
+For each biomarker, a **Rating Rank** is determined:
+- **Rank Range**: 1 to 5.
+- **Source**: The rank is derived from the `rating_rank` associated with the biomarker's `display_rating` (e.g., Optimal, Normal, Borderline) in the API response.
+- **Special Calculations**:
+    - **BMI**: Calculated from height and weight if not directly available.
+    - **NLR (Neutrophil-to-Lymphocyte Ratio)**: Calculated as `Neutrophils / Lymphocytes`.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 2. Tiered Structure & Target Scores
+Biomarkers are grouped into three priority tiers with fixed original total points:
+- **Tier A (600 pts)**: Essential biomarkers (e.g., HbA1c, Insulin, hs-CRP).
+- **Tier B (240 pts)**: Secondary priority biomarkers (e.g., Lipid profile, Blood Pressure).
+- **Tier C (160 pts)**: Tertiary and nutrient biomarkers (e.g., Vitamin levels, Iron).
 
-## Expanding the ESLint configuration
+### 3. Rule Applications
+Before final scoring, several rules may modify the ranks:
+- **Context Rules**: Adjust or suppress ranks based on other related biomarkers.
+- **Capping Rules**: Limit individual biomarker ranks to a specific maximum based on clinical thresholds.
+- **Substitution/Lowest Logic**: If a primary biomarker is missing, a substitute is used, or the lowest rank among a group of related markers is selected.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### 4. Score Normalization
+To ensure the score reflects the original 1000-point scale regardless of data availability:
+1.  **Metric Score**: `(Capped_Rank / 5) * Target_Score`
+2.  **Tier Achievement**: Sum of achieved scores for available markers in a tier.
+3.  **Tier Potential**: Sum of target scores for available markers in that same tier.
+4.  **Normalized Tier Score**: `(Tier_Achievement / Tier_Potential) * Original_Tier_Total`
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### 5. Final Baseline Score & Global Capping
+The final score is the sum of the normalized scores from Tiers A, B, and C (Max 1000).
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+**Overall Capping**: 
+Certain critical biomarkers (like HbA1c, Fasting Insulin, Body Fat %) can trigger a global cap. If any such biomarker's rank matches a capping rule, the final score percentage is capped at the lowest applicable `capScore` (e.g., 65%, 75%, 85%).
+- **Formula**: `Final_Score = min(Total_Baseline_Score, (Lowest_Cap / 100) * 1000)`
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+---
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 🛠 Tech Stack
+- **Frontend**: React + TypeScript + Vite
+- **Styling**: Vanilla CSS (Premium Aesthetics)
+- **State Management**: React Hooks (useMemo for heavy calculations)
+- **API**: DH Staging APIs V4

@@ -66,7 +66,7 @@ import { API_BASE_URL, getCommonHeaders } from './config';
 
 
 export async function fetchHealthData(): Promise<HealthDataResponse> {
-    const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYWNjNzhlYTktNDQ0Mi00OTAxLTlhZTEtMmViY2I4ZTk1ZGM2Iiwic2Vzc2lvbl9pZCI6ImRhOTNhZDg5LTYwYTYtNDUxYS1iNWU5LTBlOTA0ZDhkMmY1ZSIsInVzZXJfaW50X2lkIjoiMTQ3IiwicHJvZmlsZV9pZCI6IjE0MyIsImxlYWRfaWQiOiI3MTg0ZGE5NC0zYjk0LTQ3MjAtYmNlOS0yMWNmMjY3Nzk5MzAiLCJyb2xlIjpbIkFETUlOIl0sImlhdCI6MTc3MDgwNzcxMSwiZXhwIjoxNzcxNDEyNTExfQ.FwZ6lv0s7yDvSS05yTX6yhEF45MCjCUeRX92DEdNgyk\n";
+    const token = localStorage.getItem('access_token');
     const response = await fetch(`${API_BASE_URL}/v4/human-token/health-data?metrics[]=blood&metrics[]=symptoms`, {
         method: 'GET',
         headers: getCommonHeaders(token)
@@ -78,7 +78,7 @@ export async function fetchHealthData(): Promise<HealthDataResponse> {
 }
 
 export async function fetchUserHealthData(userId: string): Promise<HealthDataResponse> {
-    const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYWNjNzhlYTktNDQ0Mi00OTAxLTlhZTEtMmViY2I4ZTk1ZGM2Iiwic2Vzc2lvbl9pZCI6ImRhOTNhZDg5LTYwYTYtNDUxYS1iNWU5LTBlOTA0ZDhkMmY1ZSIsInVzZXJfaW50X2lkIjoiMTQ3IiwicHJvZmlsZV9pZCI6IjE0MyIsImxlYWRfaWQiOiI3MTg0ZGE5NC0zYjk0LTQ3MjAtYmNlOS0yMWNmMjY3Nzk5MzAiLCJyb2xlIjpbIkFETUlOIl0sImlhdCI6MTc3MDgwNzcxMSwiZXhwIjoxNzcxNDEyNTExfQ.FwZ6lv0s7yDvSS05yTX6yhEF45MCjCUeRX92DEdNgyk\n";
+    const token = localStorage.getItem('access_token');
     // Using the ID from the user object (e.g. "520")
     const response = await fetch(`${API_BASE_URL}/v4/human-token/health-data/user/${userId}?metrics[]=blood&metrics[]=symptoms`, {
         method: 'GET',
@@ -103,7 +103,8 @@ export async function fetchPIIData(): Promise<PIIDataResponse> {
 }
 
 export async function fetchUserPIIData(userId: string): Promise<PIIDataResponse> {
-    const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYWNjNzhlYTktNDQ0Mi00OTAxLTlhZTEtMmViY2I4ZTk1ZGM2Iiwic2Vzc2lvbl9pZCI6ImRhOTNhZDg5LTYwYTYtNDUxYS1iNWU5LTBlOTA0ZDhkMmY1ZSIsInVzZXJfaW50X2lkIjoiMTQ3IiwicHJvZmlsZV9pZCI6IjE0MyIsImxlYWRfaWQiOiI3MTg0ZGE5NC0zYjk0LTQ3MjAtYmNlOS0yMWNmMjY3Nzk5MzAiLCJyb2xlIjpbIkFETUlOIl0sImlhdCI6MTc3MDgwNzcxMSwiZXhwIjoxNzcxNDEyNTExfQ.FwZ6lv0s7yDvSS05yTX6yhEF45MCjCUeRX92DEdNgyk\n";
+    const token = localStorage.getItem('access_token');
+
     // Pattern guessed based on health-data endpoint: /v4/human-token/pii-data/user/{userId}
     const response = await fetch(`${API_BASE_URL}/v4/human-token/pii-data/user/${userId}`, {
         method: 'GET',

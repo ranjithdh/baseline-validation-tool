@@ -24,7 +24,7 @@ export const userService = {
             return cachedUsers;
         }
 
-        const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYWNjNzhlYTktNDQ0Mi00OTAxLTlhZTEtMmViY2I4ZTk1ZGM2Iiwic2Vzc2lvbl9pZCI6ImRhOTNhZDg5LTYwYTYtNDUxYS1iNWU5LTBlOTA0ZDhkMmY1ZSIsInVzZXJfaW50X2lkIjoiMTQ3IiwicHJvZmlsZV9pZCI6IjE0MyIsImxlYWRfaWQiOiI3MTg0ZGE5NC0zYjk0LTQ3MjAtYmNlOS0yMWNmMjY3Nzk5MzAiLCJyb2xlIjpbIkFETUlOIl0sImlhdCI6MTc3MDgwNzcxMSwiZXhwIjoxNzcxNDEyNTExfQ.FwZ6lv0s7yDvSS05yTX6yhEF45MCjCUeRX92DEdNgyk\n";
+        const token = localStorage.getItem('access_token');
 
         try {
             const response = await fetch(API_URL, {
