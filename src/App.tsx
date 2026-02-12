@@ -3,6 +3,7 @@ import './index.css'
 import LoginContainer from './components/login/LoginContainer'
 import BiomarkerList from './components/BiomarkerList'
 import UserSearch from './components/UserSearch'
+import UsersTab from './components/UsersTab'
 import { fetchHealthData, fetchUserHealthData, fetchUserPIIData, calculateBMI, type HealthDataResponse, type PIIData } from './services/api'
 import { type User } from './services/userService'
 
@@ -14,6 +15,8 @@ function App() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [piiData, setPiiData] = useState<PIIData | null>(null);
   const [bmi, setBmi] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<'scanner' | 'users'>('scanner');
+
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -146,6 +149,47 @@ function App() {
         </div>
 
         <div style={{ display: 'flex', gap: 'var(--space-md)', alignItems: 'center' }}>
+          <nav style={{
+            display: 'flex',
+            background: 'rgba(255, 255, 255, 0.05)',
+            padding: '4px',
+            borderRadius: '12px',
+            border: '1px solid var(--border)',
+            marginRight: 'var(--space-md)'
+          }}>
+            <button
+              onClick={() => setActiveTab('scanner')}
+              className="btn"
+              style={{
+                padding: '8px 20px',
+                border: 'none',
+                background: activeTab === 'scanner' ? 'var(--primary)' : 'transparent',
+                color: activeTab === 'scanner' ? '#052e16' : 'var(--text-secondary)',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                transition: 'all 0.2s'
+              }}
+            >
+              Scanner
+            </button>
+            <button
+              onClick={() => setActiveTab('users')}
+              className="btn"
+              style={{
+                padding: '8px 20px',
+                border: 'none',
+                background: activeTab === 'users' ? 'var(--primary)' : 'transparent',
+                color: activeTab === 'users' ? '#052e16' : 'var(--text-secondary)',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                transition: 'all 0.2s'
+              }}
+            >
+              Users
+            </button>
+          </nav>
           <button
             onClick={() => {
               localStorage.removeItem('access_token');
@@ -160,62 +204,70 @@ function App() {
             Sign Out
           </button>
         </div>
+
       </header>
 
       <main style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xl)' }}>
-        <section className="glass" style={{ borderRadius: '20px', padding: 'var(--space-lg)' }}>
-          <UserSearch onUserSelect={handleUserSelect} />
-        </section>
+        {activeTab === 'scanner' ? (
+          <>
+            <section className="glass" style={{ borderRadius: '20px', padding: 'var(--space-lg)' }}>
+              <UserSearch onUserSelect={handleUserSelect} />
+            </section>
 
-        {selectedUser && (
-          <div className="card" style={{
-            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--space-md)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
-                <div style={{
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '12px',
-                  background: 'var(--bg-surface)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '1.5rem'
-                }}>
-                  👤
-                </div>
-                <div>
-                  <h2 style={{ fontSize: '1.25rem' }}>{selectedUser.name}</h2>
-                  <div style={{ display: 'flex', gap: 'var(--space-sm)', fontSize: '0.85rem' }} className="text-secondary">
-                    <span>ID: {selectedUser.id}</span>
+            {selectedUser && (
+              <div className="card" style={{
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-md)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
+                    <div style={{
+                      width: '48px',
+                      height: '48px',
+                      borderRadius: '12px',
+                      background: 'var(--bg-surface)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '1.5rem'
+                    }}>
+                      👤
+                    </div>
+                    <div>
+                      <h2 style={{ fontSize: '1.25rem' }}>{selectedUser.name}</h2>
+                      <div style={{ display: 'flex', gap: 'var(--space-sm)', fontSize: '0.85rem' }} className="text-secondary">
+                        <span>ID: {selectedUser.id}</span>
+                      </div>
+                    </div>
                   </div>
+
+                  {bmi !== null && (
+                    <div style={{ display: 'flex', gap: 'var(--space-xl)' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div className="text-muted" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>BMI Index</div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)' }}>{bmi}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div className="text-muted" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Metrics</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>{piiData?.height}cm / {piiData?.weight}kg</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
+            )}
 
-              {bmi !== null && (
-                <div style={{ display: 'flex', gap: 'var(--space-xl)' }}>
-                  <div style={{ textAlign: 'right' }}>
-                    <div className="text-muted" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>BMI Index</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--primary)' }}>{bmi}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div className="text-muted" style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Metrics</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>{piiData?.height}cm / {piiData?.weight}kg</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+            <section>
+              <BiomarkerList healthData={healthData} loading={loading} error={error} bmi={bmi} />
+            </section>
+          </>
+        ) : (
+          <UsersTab />
         )}
-
-        <section>
-          <BiomarkerList healthData={healthData} loading={loading} error={error} bmi={bmi} />
-        </section>
       </main>
+
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { TIER_DATA, type TieredBiomarker } from '../data/tierData';
-import type { BloodBiomarker } from '../services/api';
+import type { BloodBiomarker, HealthDataResponse } from '../services/api';
 import { BASELINE_CAPPING_RULES } from '../data/baselineCappingRules';
 import { METRIC_IDS } from '../data/biomarkerIds';
 import { CONTEXT_RULES } from '../data/contextRules';
@@ -496,3 +496,160 @@ export function getBaselineCappingResult(bloodData: BloodBiomarker[], tierData: 
 
     return { lowestCap, appliedRules, cappingAudits };
 }
+
+/**
+ * Calculates the complete baseline score result for a user.
+ */
+export function calculateBaselineScore(
+    healthData: HealthDataResponse,
+    bmi: number | null = null
+): BaselineScoreResult | null {
+    if (!healthData?.data?.blood?.data) return null;
+
+    const bloodData = healthData.data.blood.data;
+
+    // 1. Calculate Ranks & Populate Map
+    const currentRanks: Record<string, number | null> = {};
+
+    // First, populate ranks for ALL available blood data directly
+    bloodData.forEach(bm => {
+        if (bm.metric_id) {
+            const rank = getRatingRank(bm);
+            currentRanks[bm.metric_id] = rank;
+        }
+    });
+
+    // Then, ensure tiered items are also captured
+    TIER_DATA.forEach(tierItem => {
+        const { rank } = calculateTierRank(tierItem, bloodData, bmi);
+        if (tierItem.metric_id) {
+            if (currentRanks[tierItem.metric_id] === undefined) {
+                currentRanks[tierItem.metric_id] = rank;
+            }
+        }
+    });
+
+    // 2. Apply Rules
+    const contextResults = applyContextRules(currentRanks);
+    const cappingResults = applyCappingRules(currentRanks);
+
+    // 3. Calculate Scores
+    const finalizedScores: TierScores = {
+        A: { total: 0, achieved: 0 },
+        B: { total: 0, achieved: 0 },
+        C: { total: 0, achieved: 0 }
+    };
+    const markerAudits: BiomarkerAudit[] = [];
+
+    TIER_DATA.forEach(item => {
+        const { rank, audit } = calculateTierRank(item, bloodData, bmi);
+
+        // Determine final rank after rules (using ID lookup)
+        const contextAction = item.metric_id ? contextResults[item.metric_id] : undefined;
+        const cappingAction = item.metric_id ? cappingResults[item.metric_id] : undefined;
+
+        let cappedRank = rank;
+        let ruleApplied: string | null = audit.ruleApplied || null;
+        let ruleTitle: string | undefined = audit.ruleTitle;
+
+        // Priority 1: Context Rules (Suppress/Cap)
+        if (contextAction?.action === 'suppress') {
+            cappedRank = null;
+            ruleApplied = (ruleApplied ? ruleApplied + ' + ' : '') + 'suppress';
+            ruleTitle = contextAction.ruleTitle;
+        } else if (contextAction?.action === 'cap') {
+            const capVal = contextAction.capValue;
+            if (capVal !== undefined && cappedRank !== null && cappedRank > capVal) {
+                cappedRank = capVal;
+                ruleApplied = (ruleApplied ? ruleApplied + ' + ' : '') + 'cap';
+                ruleTitle = contextAction.ruleTitle;
+            }
+        }
+
+        // Priority 2: Capping Rules
+        if (cappingAction?.action === 'suppress') {
+            cappedRank = null;
+            ruleApplied = (ruleApplied ? ruleApplied + ' + ' : '') + 'suppress';
+            ruleTitle = cappingAction.ruleTitle;
+        } else if (cappingAction?.action === 'cap') {
+            const capVal = cappingAction.capValue;
+            if (capVal !== undefined && cappedRank !== null && cappedRank > capVal) {
+                cappedRank = capVal;
+                ruleApplied = (ruleApplied ? ruleApplied + ' + ' : '') + 'cap';
+                ruleTitle = cappingAction.ruleTitle;
+            }
+        }
+
+        // Calculate Max Rank
+        const maxRank = calculateMaxTierRank(item, bloodData);
+
+        // Calculate Final Score
+        let finalScore = 0;
+        if (cappedRank !== null) {
+            finalScore = calculateFinalScore(cappedRank, maxRank, item.targetScore);
+        }
+
+        // Create Audit Entry
+        const finalAudit: BiomarkerAudit = {
+            name: item.name,
+            tier: item.tier,
+            apiNameUsed: audit.apiNameUsed || null,
+            originalRank: rank,
+            cappedRank: cappedRank,
+            maxRank: maxRank,
+            targetScore: item.targetScore,
+            finalScore: finalScore,
+            ruleApplied: ruleApplied,
+            ruleTitle: ruleTitle,
+            isMissing: audit.isMissing ?? true,
+            isSubstitute: audit.isSubstitute ?? false,
+            substituteValue: audit.substituteValue,
+            value: audit.value,
+            unit: audit.unit
+        };
+        markerAudits.push(finalAudit);
+
+        const tier = item.tier as 'A' | 'B' | 'C';
+        if (cappedRank !== null) {
+            finalizedScores[tier].achieved += finalScore;
+            finalizedScores[tier].total += item.targetScore;
+        }
+    });
+
+    // Calculate Totals & Normalization
+    const originalTotals = calculateOriginalTierTotals();
+    const normalizedScores: TierTotals = {
+        A: normalizeTierScore(finalizedScores.A.achieved, finalizedScores.A.total, originalTotals.A),
+        B: normalizeTierScore(finalizedScores.B.achieved, finalizedScores.B.total, originalTotals.B),
+        C: normalizeTierScore(finalizedScores.C.achieved, finalizedScores.C.total, originalTotals.C),
+    };
+
+    const totalBaselineScore = normalizedScores.A + normalizedScores.B + normalizedScores.C;
+    const totalOriginalScore = originalTotals.A + originalTotals.B + originalTotals.C;
+
+    // Baseline Capping
+    const cappingResult = getBaselineCappingResult(bloodData, TIER_DATA, bmi);
+    let finalBaselineScore = totalBaselineScore;
+    let isCappedOverall = false;
+
+    if (cappingResult.lowestCap !== null) {
+        const currentPercentage = (totalBaselineScore / totalOriginalScore) * 100;
+        if (currentPercentage > cappingResult.lowestCap) {
+            finalBaselineScore = (cappingResult.lowestCap / 100) * totalOriginalScore;
+            isCappedOverall = true;
+        }
+    }
+
+    return {
+        originalTotals,
+        finalizedScores,
+        normalizedScores,
+        totalBaselineScore: finalBaselineScore,
+        totalOriginalScore,
+        cappingResult,
+        isCappedOverall,
+        preCappedScore: totalBaselineScore,
+        markerAudits
+    };
+}
+
