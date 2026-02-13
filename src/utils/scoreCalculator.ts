@@ -341,7 +341,9 @@ export function calculateFinalScore(
 ): number {
     const divisor = 5;
     const result = (cappedRank / divisor) * targetScore;
-    if (import.meta.env.MODE === 'development' && result === targetScore && cappedRank < maxRank) {
+    // @ts-ignore
+    const isDev = typeof process !== 'undefined' ? process.env.NODE_ENV === 'development' : false;
+    if (isDev && result === targetScore && cappedRank < maxRank) {
         console.warn(`Suspicious Score Calc: Rank ${cappedRank}/${maxRank} * ${targetScore} = ${result}`);
     }
     return result;
@@ -383,10 +385,10 @@ export interface BaselineScoreResult {
 /**
  * Calculate original tier totals from TIER_DATA.
  */
-export function calculateOriginalTierTotals(): TierTotals {
+export function calculateOriginalTierTotals(tierData: TieredBiomarker[] = TIER_DATA): TierTotals {
     const totals: TierTotals = { A: 0, B: 0, C: 0 };
 
-    TIER_DATA.forEach(item => {
+    tierData.forEach(item => {
         const tier = item.tier as 'A' | 'B' | 'C';
         if (tier in totals) {
             totals[tier] += item.targetScore;
@@ -472,7 +474,9 @@ export function getBaselineCappingResult(bloodData: BloodBiomarker[], tierData: 
             tier: tieredItem?.tier
         };
 
-        if (import.meta.env.MODE === 'development') {
+        // @ts-ignore
+        const isDev = typeof process !== 'undefined' ? process.env.NODE_ENV === 'development' : false;
+        if (isDev) {
             console.log(`Checking Rule: ${auditData.name} (${ruleId}) | Rank: ${rank}`);
         }
         cappingAudits.push(audit);
@@ -502,7 +506,8 @@ export function getBaselineCappingResult(bloodData: BloodBiomarker[], tierData: 
  */
 export function calculateBaselineScore(
     healthData: HealthDataResponse,
-    bmi: number | null = null
+    bmi: number | null = null,
+    tierData: TieredBiomarker[] = TIER_DATA
 ): BaselineScoreResult | null {
     if (!healthData?.data?.blood?.data) return null;
 
@@ -520,7 +525,7 @@ export function calculateBaselineScore(
     });
 
     // Then, ensure tiered items are also captured
-    TIER_DATA.forEach(tierItem => {
+    tierData.forEach(tierItem => {
         const { rank } = calculateTierRank(tierItem, bloodData, bmi);
         if (tierItem.metric_id) {
             if (currentRanks[tierItem.metric_id] === undefined) {
@@ -541,7 +546,7 @@ export function calculateBaselineScore(
     };
     const markerAudits: BiomarkerAudit[] = [];
 
-    TIER_DATA.forEach(item => {
+    tierData.forEach(item => {
         const { rank, audit } = calculateTierRank(item, bloodData, bmi);
 
         // Determine final rank after rules (using ID lookup)
@@ -617,7 +622,7 @@ export function calculateBaselineScore(
     });
 
     // Calculate Totals & Normalization
-    const originalTotals = calculateOriginalTierTotals();
+    const originalTotals = calculateOriginalTierTotals(tierData);
     const normalizedScores: TierTotals = {
         A: normalizeTierScore(finalizedScores.A.achieved, finalizedScores.A.total, originalTotals.A),
         B: normalizeTierScore(finalizedScores.B.achieved, finalizedScores.B.total, originalTotals.B),
@@ -628,7 +633,7 @@ export function calculateBaselineScore(
     const totalOriginalScore = originalTotals.A + originalTotals.B + originalTotals.C;
 
     // Baseline Capping
-    const cappingResult = getBaselineCappingResult(bloodData, TIER_DATA, bmi);
+    const cappingResult = getBaselineCappingResult(bloodData, tierData, bmi);
     let finalBaselineScore = totalBaselineScore;
     let isCappedOverall = false;
 

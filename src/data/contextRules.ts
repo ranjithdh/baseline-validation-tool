@@ -65,7 +65,9 @@ export const CONTEXT_RULES: ContextRule[] = [
             const fastingInsulin = ranks[METRIC_IDS.FASTING_INSULIN];
             const ppInsulin = ranks[METRIC_IDS.PP_INSULIN];
 
-            if (import.meta.env.MODE === 'development') {
+            // @ts-ignore
+            const isDev = typeof process !== 'undefined' ? process.env.NODE_ENV === 'development' : false;
+            if (isDev) {
                 console.log('DEBUG HbA1c Rule:', {
                     hba1c,
                     fastingInsulin,

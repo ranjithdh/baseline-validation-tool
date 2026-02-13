@@ -34,15 +34,17 @@ function App() {
           localStorage.removeItem('selected_user');
         }
       }
-    } else if (import.meta.env.MODE === 'development') {
-      // Auto-login for development
-      setIsAuthenticated(true);
     }
+    // else if (import.meta.env.MODE === 'development') {
+    //   setIsAuthenticated(true);
+    // }
   }, []);
 
   // Fetch default health data when authenticated
   useEffect(() => {
     if (isAuthenticated) {
+      // const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiYWNjNzhlYTktNDQ0Mi00OTAxLTlhZTEtMmViY2I4ZTk1ZGM2Iiwic2Vzc2lvbl9pZCI6IjIyYjQ5YjRjLWMyYjctNDVkNi1iODhkLTI0OTUwZWFhNjI3OCIsInVzZXJfaW50X2lkIjoiMTQ3IiwicHJvZmlsZV9pZCI6IjE0MyIsImxlYWRfaWQiOiI3MTg0ZGE5NC0zYjk0LTQ3MjAtYmNlOS0yMWNmMjY3Nzk5MzAiLCJyb2xlIjpbIkFETUlOIl0sImlhdCI6MTc3MDk3ODI1MywiZXhwIjoxNzcxNTgzMDUzfQ.p_wIb1mpvVjdV55W-KR64rrWPGkGyU57NWazjfMbozM\n";
+      // localStorage.setItem('access_token', token);
       loadDefaultHealthData();
     }
   }, [isAuthenticated]);
